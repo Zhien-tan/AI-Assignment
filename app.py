@@ -1,6 +1,7 @@
 import streamlit as st
 import joblib
 import gdown
+import torch  # PyTorch library
 import pandas as pd
 
 # Title for the web app
@@ -18,8 +19,8 @@ if user_review:
     # Use gdown to download the model
     gdown.download(model_url, model_file, quiet=False)
 
-    # Load the pre-trained model
-    model = joblib.load(model_file)
+    # Load the pre-trained model with map_location to ensure it loads on CPU
+    model = joblib.load(model_file, map_location=torch.device('cpu'))
 
     # Assuming you have a tokenizer saved or defined elsewhere, for example, using Hugging Face's tokenizer
     # If your model needs a tokenizer, make sure to load it similarly
