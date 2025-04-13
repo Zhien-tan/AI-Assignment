@@ -1,15 +1,33 @@
 import streamlit as st
-from predict import predict_sentiment
+import pickle
+import pandas as pd
+import numpy as np
 
-st.title("☕ Coffee Review Sentiment Classifier")
-st.write("Enter a coffee review below to predict whether it's Positive, Neutral, or Negative.")
+# Load the trained model (adjust path if needed)
+@st.cache_resource
+def load_model():
+    with open("model.pkl", "rb") as f:
+        model = pickle.load(f)
+    return model
 
-user_input = st.text_area("Enter your review here:")
+model = load_model()
 
-if st.button("Predict"):
-    if user_input.strip() == "":
-        st.warning("Please enter a review!")
+# Title
+st.title("☕ Coffee Review Sentiment Analyzer")
+
+# User input
+user_input = st.text_area("Enter your coffee review:")
+
+if st.button("Analyze"):
+    if not user_input.strip():
+        st.warning("Please enter a review.")
     else:
-        sentiment, confidence = predict_sentiment(user_input)
-        st.success(f"Predicted Sentiment: **{sentiment}**")
-        st.info(f"Confidence Score: {confidence:.2f}")
+        # You may need to preprocess input to match your model
+        input_df = pd.DataFrame([user_input], columns=["review"])
+        prediction = model.predict(input_df["review"])[0]
+
+        # If your model returns a number (e.g., 0,1,2), map to label
+        label_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
+        sentiment = label_map.get(prediction, "Unknown")
+
+        st.success(f"Predicted Sentiment: **{sentiment}** 🎯")
