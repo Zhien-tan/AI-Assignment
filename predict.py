@@ -4,13 +4,14 @@ import torch
 from transformers import AutoTokenizer
 from torch.nn.functional import softmax
 
-# 🔽 File ID and model path
-file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
-output_path = "sentiment_model.pth"  # Changed to .pth, which is the typical PyTorch model extension
+import gdown
 
-# 🔽 Download model if not exists
-if not os.path.exists(output_path):
-    gdown.download(f"https://drive.google.com/uc?id={file_id}", output_path, quiet=False)
+# File ID extracted from the URL
+file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
+output_path = "sentiment_model.pkl"
+
+# Download the file from Google Drive if it does not exist
+gdown.download(f"https://drive.google.com/uc?id={file_id}", output_path, quiet=False)
 
 # 🔽 Load tokenizer (you can replace with your custom tokenizer path if needed)
 tokenizer = AutoTokenizer.from_pretrained("tokenizer")
