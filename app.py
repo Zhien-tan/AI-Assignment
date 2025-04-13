@@ -1,7 +1,6 @@
 import streamlit as st
 import torch  # PyTorch library
 import gdown
-import joblib
 
 # Title for the web app
 st.title("Sentiment Analysis Model")
@@ -21,19 +20,31 @@ if user_review:
     # Load the pre-trained model using torch.load, with map_location set to CPU
     model = torch.load(model_file, map_location=torch.device('cpu'))
 
-    # You may also need to load a tokenizer if you have one. For example, if you used Hugging Face's tokenizer:
-    tokenizer = joblib.load('tokenizer.pkl')  # Replace this if your tokenizer is stored elsewhere
+    # Assuming you have a tokenizer for preprocessing (you might need to load it separately)
+    # tokenizer = joblib.load('tokenizer.pkl')  # If needed, adjust the path accordingly
 
-    # Preprocessing the user's input, assuming your tokenizer requires the input to be tokenized
-    inputs = tokenizer(user_review, return_tensors='pt')
+    # Preprocess the review input as needed for the model (ensure you tokenize/format the input)
+    # Example: Assuming you're using the tokenizer to prepare the input for the model
+    # inputs = tokenizer(user_review, return_tensors='pt')
 
-    # Perform the sentiment prediction (ensure your model's forward method is correctly implemented)
-    prediction = model(inputs['input_ids'])
+    # Perform the sentiment prediction (ensure your model’s forward method is correctly implemented)
+    # prediction = model(inputs['input_ids'])
 
-    # Display the result
-    if prediction == 0:
+    # Here you can use the model to get predictions directly, assuming it's a text classification model
+    # If your model returns logits, you may need to apply softmax or another activation function.
+    
+    # Example for prediction:
+    # Assuming model outputs logits and you want to convert them to probabilities
+    model.eval()  # Set the model to evaluation mode
+    with torch.no_grad():  # Disable gradient calculation
+        inputs = torch.tensor([user_review])  # Convert review text to tensor (implement tokenization as needed)
+        outputs = model(inputs)  # Get the raw prediction from the model
+        predicted_class = torch.argmax(outputs, dim=1).item()  # Get the predicted class (0, 1, or 2)
+    
+    # Display the result based on the model's output
+    if predicted_class == 0:
         st.write("Sentiment: Negative")
-    elif prediction == 1:
+    elif predicted_class == 1:
         st.write("Sentiment: Neutral")
     else:
         st.write("Sentiment: Positive")
