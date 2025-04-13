@@ -1,5 +1,6 @@
 import streamlit as st
 import torch  # PyTorch library
+import joblib
 import gdown
 
 # Title for the web app
@@ -12,27 +13,23 @@ user_review = st.text_area("Enter a review:")
 if user_review:
     # Define the model URL from Google Drive (use the shared Google Drive link)
     model_url = 'https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B'  # Update with your actual model file ID
-    model_file = 'sentiment_model.pkl'
-    
+    model_file = 'sentiment_model.pkl'  # Assuming your model is a .pkl file
+
     # Use gdown to download the model from Google Drive
     gdown.download(model_url, model_file, quiet=False)
 
-    # Load the pre-trained model using torch.load, with map_location set to CPU
-    model = torch.load(model_file, map_location=torch.device('cpu'))
+    # Load the pre-trained model using joblib
+    model = joblib.load(model_file)
 
-    # Assuming you have a tokenizer for preprocessing (you might need to load it separately)
-    # tokenizer = joblib.load('tokenizer.pkl')  # If needed, adjust the path accordingly
+    # If the model is a PyTorch model (e.g., torch.nn.Module), load with torch.load
+    if isinstance(model, torch.nn.Module):
+        model.eval()  # Set the model to evaluation mode
 
     # Preprocess the review input as needed for the model (ensure you tokenize/format the input)
     # Example: Assuming you're using the tokenizer to prepare the input for the model
     # inputs = tokenizer(user_review, return_tensors='pt')
 
     # Perform the sentiment prediction (ensure your model’s forward method is correctly implemented)
-    # prediction = model(inputs['input_ids'])
-
-    # Here you can use the model to get predictions directly, assuming it's a text classification model
-    # If your model returns logits, you may need to apply softmax or another activation function.
-    
     # Example for prediction:
     # Assuming model outputs logits and you want to convert them to probabilities
     model.eval()  # Set the model to evaluation mode
