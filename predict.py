@@ -4,7 +4,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from torch.nn.functional import softmax
 
 # ⬇️ Download the model from Google Drive
-gdown.download("https://drive.google.com/drive/search?q=owner:me%20(type:application/vnd.google.colaboratory%20||%20type:application/vnd.google.colab)", "sentiment_model", quiet=False)
+gdown.download("https://drive.google.com/file/d/1WLYPN-8N-rXBNbt1sMspTgk_SJ3yc_Vw/view?usp=sharing", "sentiment_model", quiet=False)
 
 # ⬇️ Load model and tokenizer
 tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")  # or your custom tokenizer path
