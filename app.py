@@ -28,7 +28,7 @@ def load_resources():
 def try_load_pickle():
     try:
         # Download model
-        model_file = "sentiment_model.pkl"
+        model_file = "model.pkl"
         if not os.path.exists(model_file):
             gdown.download(
                 "https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B",
