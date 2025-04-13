@@ -1,14 +1,18 @@
 import streamlit as st
 import gdown
+import zipfile
+import os
 from transformers import BertForSequenceClassification, BertTokenizer
 
-# Download the model and tokenizer from Google Drive
-model_url = 'https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B'
+# Download the zipped model from Google Drive
+model_url = 'https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B'  # Replace with your file ID
 gdown.download(model_url, 'sentiment_model.zip', quiet=False)
 
-# Unzip the model (Optional, if you're saving your model as a zip file)
-import zipfile
-with zipfile.ZipFile('sentiment_model.zip', 'r') as zip_ref:
+# Unzip the model
+if not os.path.exists('sentiment_model'):
+    os.makedirs('sentiment_model')
+    
+with zipfile.ZipFile('sentiment_model.pkl', 'r') as zip_ref:
     zip_ref.extractall('sentiment_model')
 
 # Load the model and tokenizer
