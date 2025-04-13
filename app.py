@@ -20,7 +20,10 @@ if user_review:
     gdown.download(model_url, model_file, quiet=False)
 
     # Load the pre-trained model with map_location to ensure it loads on CPU
-    model = joblib.load(model_file, map_location=torch.device('cpu'))
+    model = joblib.load(model_file)
+    
+    # Map the model weights to CPU (to avoid issues on CPU-only environments)
+    model = torch.load(model_file, map_location=torch.device('cpu'))
 
     # Assuming you have a tokenizer saved or defined elsewhere, for example, using Hugging Face's tokenizer
     # If your model needs a tokenizer, make sure to load it similarly
