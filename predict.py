@@ -1,30 +1,32 @@
 import os
 import gdown
-import torch
+import joblib
 from transformers import AutoTokenizer
+import torch
 from torch.nn.functional import softmax
 
-# ⬇Download the model from Google Drive
+# 🔽 File ID and local filename
 file_id = "1WLYPN-8N-rXBNbt1sMspTgk_SJ3yc_Vw"
 output_path = "sentiment_model.pkl"
 
+# 🔽 Download the model if not already present
 if not os.path.exists(output_path):
-    gdown.download(f"https://drive.google.com/file/d/1WLYPN-8N-rXBNbt1sMspTgk_SJ3yc_Vw/view?usp=sharing", output_path, quiet=False)
+    gdown.download(f"https://drive.google.com/uc?id={file_id}", output_path, quiet=False)
 
-# ✅ Load tokenizer
+# 🔽 Load tokenizer (you can replace with your custom tokenizer path if needed)
 tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
-# ✅ Load model
-model = torch.load(output_path, map_location=torch.device("cpu"))
+# 🔽 Load the model
+model = joblib.load(output_path)
 model.eval()
 
-# ✅ Prediction function
+# 🔽 Prediction function
 def predict_sentiment(text):
     inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
     with torch.no_grad():
         logits = model(**inputs).logits
     probs = softmax(logits, dim=1)
-    predicted_class = torch.argmax(probs, dim=1).item()
+    predicted_class = probs.argmax(dim=1).item()
     confidence = probs[0, predicted_class].item()
     labels = ["Negative", "Neutral", "Positive"]
     return labels[predicted_class], confidence
