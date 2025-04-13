@@ -1,26 +1,40 @@
-import gdown
+import streamlit as st
 import joblib
+import gdown
+import pandas as pd
 
-# Download the model from Google Drive
-model_url = 'https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B'
-gdown.download(model_url, 'sentiment_model.pkl', quiet=False)
+# Title for the web app
+st.title("Sentiment Analysis Model")
 
-# Load the model using joblib
-model = joblib.load('sentiment_model.pkl')
+# Add a text area for the user to input a review
+user_review = st.text_area("Enter a review:")
 
-# Function to predict sentiment
-def predict_sentiment(text):
-    inputs = tokenizer(text, return_tensors='pt', padding=True, truncation=True)
-    outputs = model(**inputs)
-    logits = outputs.logits
-    prediction = logits.argmax(dim=1).item()
-    return prediction
+# If the user inputs a review, perform the prediction
+if user_review:
+    # Download the model from Google Drive
+    model_url = 'https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B'  # Update with your actual model file ID
+    model_file = 'sentiment_model.pkl'
+    
+    # Use gdown to download the model
+    gdown.download(model_url, model_file, quiet=False)
 
-# Streamlit user interface
-st.title('Sentiment Analysis with BERT')
-user_input = st.text_area("Enter Review Text:")
+    # Load the pre-trained model
+    model = joblib.load(model_file)
 
-if user_input:
-    result = predict_sentiment(user_input)
-    sentiment = ["Negative", "Neutral", "Positive"]
-    st.write(f"Sentiment: {sentiment[result]}")
+    # Assuming you have a tokenizer saved or defined elsewhere, for example, using Hugging Face's tokenizer
+    # If your model needs a tokenizer, make sure to load it similarly
+    tokenizer = joblib.load('tokenizer.pkl')  # Load tokenizer if you have one saved
+
+    # Preprocessing the user's input
+    inputs = tokenizer(user_review, return_tensors='pt')
+
+    # Perform prediction
+    prediction = model.predict(inputs['input_ids'])
+
+    # Display the result
+    if prediction == 0:
+        st.write("Sentiment: Negative")
+    elif prediction == 1:
+        st.write("Sentiment: Neutral")
+    else:
+        st.write("Sentiment: Positive")
