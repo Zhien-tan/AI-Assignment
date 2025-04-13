@@ -13,4 +13,3 @@ if st.button("Predict"):
         sentiment, confidence = predict_sentiment(user_input)
         st.success(f"Predicted Sentiment: **{sentiment}**")
         st.info(f"Confidence Score: {confidence:.2f}")
-
