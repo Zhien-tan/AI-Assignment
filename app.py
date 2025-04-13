@@ -11,7 +11,7 @@ st.title("🎬 Movie Review Sentiment Analyzer")
 @st.cache_resource
 def load_model_and_tokenizer():
     # Download model file
-    model_file = "model.pkl"
+    model_file = "sentiment_model.pkl"
     if not os.path.exists(model_file):
         with st.spinner("Downloading model..."):
             gdown.download(
