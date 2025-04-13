@@ -5,7 +5,7 @@ from transformers import AutoTokenizer
 from torch.nn.functional import softmax
 
 # 🔽 File ID and model path
-file_id = "1WLYPN-8N-rXBNbt1sMspTgk_SJ3yc_Vw"
+file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
 output_path = "sentiment_model.pth"  # Changed to .pth, which is the typical PyTorch model extension
 
 # 🔽 Download model if not exists
