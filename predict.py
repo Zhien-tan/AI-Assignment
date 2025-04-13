@@ -1,13 +1,12 @@
-import torch
-import joblib
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch
 import torch.nn.functional as F
 
-# Load model and tokenizer (assuming you downloaded them from GitHub or have them locally)
-model = joblib.load("sentiment_model.pkl")
-tokenizer = AutoTokenizer.from_pretrained("tokenizer")
+# Load from local 'model' folder
+tokenizer = AutoTokenizer.from_pretrained("model")
+model = AutoModelForSequenceClassification.from_pretrained("model")
 
-labels = ["Negative", "Neutral", "Positive"]
+labels = ["Negative", "Neutral", "Positive"]  # Adjust if needed
 
 def predict_sentiment(text):
     inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
@@ -16,3 +15,4 @@ def predict_sentiment(text):
     probs = F.softmax(outputs.logits, dim=1)
     prediction = torch.argmax(probs, dim=1).item()
     return labels[prediction], probs[0][prediction].item()
+
