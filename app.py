@@ -1,33 +1,40 @@
+import zipfile
+import joblib
+import os
+
+# If the model is hosted on GitHub or another storage, use gdown (Google Drive) or boto3 (AWS S3) to download the file
+# Example for downloading from Google Drive (you need the file ID from Google Drive)
+
+# gdown.download('https://drive.google.com/uc?id=your_file_id', 'sentiment_model.zip', quiet=False)
+
+# If the model is already locally compressed, you can decompress it:
+def decompress_model(zip_file, extract_to):
+    with zipfile.ZipFile(zip_file, 'r') as zip_ref:
+        zip_ref.extractall(extract_to)
+    print(f"Model extracted to {extract_to}")
+
+# Decompress the model if it's not already unzipped
+if not os.path.exists('sentiment_model.pkl'):
+    decompress_model('sentiment_model.zip', './')
+
+# Now load the model after decompression
+model = joblib.load('sentiment_model.pkl')
+
+# You can now use your model for prediction
+def predict_sentiment(review):
+    # Tokenize the review and predict sentiment
+    # Example: You can apply the same tokenizer as used while training
+    inputs = tokenizer(review, return_tensors='pt', truncation=True, padding=True, max_length=512)
+    prediction = model(**inputs)
+    return prediction
+
+# Streamlit app code
 import streamlit as st
-import pickle
-import pandas as pd
-import numpy as np
 
-# Load the trained model (adjust path if needed)
-@st.cache_resource
-def load_model():
-    with open("model.pkl", "rb") as f:
-        model = pickle.load(f)
-    return model
+st.title('Sentiment Analysis App')
 
-model = load_model()
+review = st.text_area('Enter a review:')
 
-# Title
-st.title("☕ Coffee Review Sentiment Analyzer")
-
-# User input
-user_input = st.text_area("Enter your coffee review:")
-
-if st.button("Analyze"):
-    if not user_input.strip():
-        st.warning("Please enter a review.")
-    else:
-        # You may need to preprocess input to match your model
-        input_df = pd.DataFrame([user_input], columns=["review"])
-        prediction = model.predict(input_df["review"])[0]
-
-        # If your model returns a number (e.g., 0,1,2), map to label
-        label_map = {0: "Negative", 1: "Neutral", 2: "Positive"}
-        sentiment = label_map.get(prediction, "Unknown")
-
-        st.success(f"Predicted Sentiment: **{sentiment}** 🎯")
+if review:
+    result = predict_sentiment(review)
+    st.write(f"Predicted Sentiment: {result}")
