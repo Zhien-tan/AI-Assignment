@@ -6,7 +6,7 @@ from transformers import BertForSequenceClassification, BertTokenizer
 
 # Download the zipped model from Google Drive
 model_url = 'https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B'  # Replace with your file ID
-gdown.download(model_url, 'sentiment_model.zip', quiet=False)
+gdown.download(model_url, 'sentiment_model.pkl', quiet=False)
 
 # Unzip the model
 if not os.path.exists('sentiment_model'):
