@@ -1,9 +1,8 @@
 import streamlit as st
 import torch
 import gdown
-import joblib
 import os
-from transformers import pipeline, AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 # Set up Streamlit
 st.set_page_config(page_title="Sentiment Analysis", layout="centered")
@@ -18,15 +17,17 @@ def download_and_load_model():
     # Download model from Google Drive
     file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
     url = f"https://drive.google.com/uc?id={file_id}"
-    output = "sentiment_model.pkl"
+    output = "sentiment_model.pth"  # Changed extension to .pth for clarity
     
     if not os.path.exists(output):
         gdown.download(url, output, quiet=False)
     
     try:
-        # Load with explicit CPU mapping
+        # Load with explicit CPU mapping and weights_only=False
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = torch.load(output, map_location=device)
+        model = torch.load(output, 
+                         map_location=device,
+                         weights_only=False)  # Important fix for PyTorch 2.6+
         
         # If model is wrapped in DataParallel, extract the actual model
         if isinstance(model, torch.nn.DataParallel):
@@ -45,6 +46,9 @@ def load_tokenizer():
 
 def predict_sentiment(model, tokenizer, text):
     try:
+        if not text.strip():
+            return None
+            
         # Tokenize input
         inputs = tokenizer(text, 
                          return_tensors="pt",
@@ -53,7 +57,7 @@ def predict_sentiment(model, tokenizer, text):
                          max_length=512)
         
         # Move to same device as model
-        inputs = {k:v.to(model.device) for k,v in inputs.items()}
+        inputs = {k:v.to(next(model.parameters()).device) for k,v in inputs.items()}
         
         # Predict
         with torch.no_grad():
@@ -69,7 +73,7 @@ def predict_sentiment(model, tokenizer, text):
         st.error(f"Prediction failed: {str(e)}")
         return None
 
-if user_input:
+if st.button("Analyze Sentiment") and user_input:
     with st.spinner("Analyzing sentiment..."):
         model = download_and_load_model()
         tokenizer = load_tokenizer()
@@ -89,3 +93,9 @@ if user_input:
                     st.success("😊 Positive review detected!")
                 else:
                     st.warning("😞 Negative review detected")
+
+st.markdown("""
+**Note:** 
+- The model is loaded with `weights_only=False` as this is a trusted source
+- For production, consider saving your model with `torch.save(model.state_dict())` instead
+""")
