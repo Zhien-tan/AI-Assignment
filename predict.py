@@ -17,7 +17,10 @@ if not os.path.exists(output_path):
 tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
 
 # 🔽 Load the model
-model = joblib.load(output_path)
+from transformers import BertForSequenceClassification
+
+model = BertForSequenceClassification.from_pretrained(output_path)
+
 model.eval()
 
 # 🔽 Prediction function
