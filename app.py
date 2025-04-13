@@ -1,8 +1,7 @@
 import streamlit as st
-import joblib
-import gdown
 import torch  # PyTorch library
-import pandas as pd
+import gdown
+import joblib
 
 # Title for the web app
 st.title("Sentiment Analysis Model")
@@ -12,28 +11,24 @@ user_review = st.text_area("Enter a review:")
 
 # If the user inputs a review, perform the prediction
 if user_review:
-    # Download the model from Google Drive
+    # Define the model URL from Google Drive (use the shared Google Drive link)
     model_url = 'https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B'  # Update with your actual model file ID
     model_file = 'sentiment_model.pkl'
     
-    # Use gdown to download the model
+    # Use gdown to download the model from Google Drive
     gdown.download(model_url, model_file, quiet=False)
 
-    # Load the pre-trained model with map_location to ensure it loads on CPU
-    model = joblib.load(model_file)
-    
-    # Map the model weights to CPU (to avoid issues on CPU-only environments)
+    # Load the pre-trained model using torch.load, with map_location set to CPU
     model = torch.load(model_file, map_location=torch.device('cpu'))
 
-    # Assuming you have a tokenizer saved or defined elsewhere, for example, using Hugging Face's tokenizer
-    # If your model needs a tokenizer, make sure to load it similarly
-    tokenizer = joblib.load('tokenizer.pkl')  # Load tokenizer if you have one saved
+    # You may also need to load a tokenizer if you have one. For example, if you used Hugging Face's tokenizer:
+    tokenizer = joblib.load('tokenizer.pkl')  # Replace this if your tokenizer is stored elsewhere
 
-    # Preprocessing the user's input
+    # Preprocessing the user's input, assuming your tokenizer requires the input to be tokenized
     inputs = tokenizer(user_review, return_tensors='pt')
 
-    # Perform prediction
-    prediction = model.predict(inputs['input_ids'])
+    # Perform the sentiment prediction (ensure your model's forward method is correctly implemented)
+    prediction = model(inputs['input_ids'])
 
     # Display the result
     if prediction == 0:
