@@ -4,14 +4,14 @@ import gdown
 import os
 from transformers import AutoTokenizer
 
-# Set up Streamlit
+# Setup
 st.set_page_config(page_title="Sentiment Analysis", layout="centered")
 st.title("🎬 Movie Review Sentiment Analyzer")
 
 @st.cache_resource
 def load_model_and_tokenizer():
-    # Download model
-    model_file = "sentiment_model.pth"
+    # Download model file
+    model_file = "model.pkl"
     if not os.path.exists(model_file):
         with st.spinner("Downloading model..."):
             gdown.download(
@@ -20,15 +20,13 @@ def load_model_and_tokenizer():
                 quiet=False
             )
     
-    # Force CPU loading
-    device = torch.device('cpu')
-    
     try:
-        # Load with weights_only=False for trusted models
+        # Load model with explicit CPU mapping and weights_only=False
+        device = torch.device('cpu')
         model = torch.load(
             model_file,
             map_location=device,
-            weights_only=False  # Critical fix for PyTorch 2.6+
+            weights_only=False  # Required for PyTorch 2.6+
         )
         
         # Handle DataParallel if used
@@ -43,25 +41,27 @@ def load_model_and_tokenizer():
         return model, tokenizer
     except Exception as e:
         st.error(f"""
-        ❌ Failed to load model: {str(e)}
+        ❌ Model loading failed: {str(e)}
         
-        If this persists, try:
-        1. Re-saving your model with: torch.save(model.state_dict(), 'model_weights.pth')
-        2. Loading with model.load_state_dict() instead
+        Common solutions:
+        1. Make sure the file is not corrupted
+        2. Try re-saving your model with:
+           torch.save(model.state_dict(), 'model_weights.pth')
+        3. Check PyTorch version compatibility
         """)
         return None, None
 
 # Load resources
 model, tokenizer = load_model_and_tokenizer()
 
-# User input
-review = st.text_area("Enter your movie review:", height=150, placeholder="The acting was superb and the story was captivating...")
+# User interface
+review = st.text_area("Enter your movie review:", height=150)
 
 if st.button("Analyze Sentiment", type="primary") and review:
     if model is None:
-        st.error("Please fix the model loading error above first.")
+        st.error("Model failed to load. Please check the error above.")
     else:
-        with st.spinner("Analyzing sentiment..."):
+        with st.spinner("Analyzing..."):
             try:
                 # Tokenize input
                 inputs = tokenizer(
@@ -82,25 +82,29 @@ if st.button("Analyze Sentiment", type="primary") and review:
                 confidence = max(probs).item()
                 
                 # Display results
-                st.subheader("Result")
+                st.subheader("Results")
                 col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Sentiment", f"{sentiment} {'😊' if sentiment == 'POSITIVE' else '😞'}")
-                with col2:
-                    st.metric("Confidence", f"{confidence:.1%}")
+                col1.metric("Sentiment", sentiment, 
+                          delta="😊" if sentiment == "POSITIVE" else "😞")
+                col2.metric("Confidence", f"{confidence:.1%}")
                 
                 # Confidence visualization
                 st.progress(confidence)
                 
+                # Detailed scores
+                with st.expander("Detailed Scores"):
+                    pos, neg = st.columns(2)
+                    pos.metric("Positive Score", f"{probs[1].item():.1%}")
+                    neg.metric("Negative Score", f"{probs[0].item():.1%}")
+                    
             except Exception as e:
                 st.error(f"❌ Analysis failed: {str(e)}")
 
-# Add safety disclaimer
+# Add documentation
 st.markdown("""
 ---
-⚠️ **Security Note**:  
-This app uses `weights_only=False` to load the model because:
-- You are the original creator of this model
-- The model file comes from your trusted Google Drive
-- For untrusted models, always use `weights_only=True`
+### ℹ️ About This App
+- Model: DistilBERT fine-tuned on SST-2
+- File: [model.pkl](https://drive.google.com/file/d/1pKFpU56YyLloC5IONDMxih5QMQSew54B/view)
+- App URL: [https://ibtsamfft3vou2mqnd9zz5.streamlit.app/](https://ibtsamfft3vou2mqnd9zz5.streamlit.app/)
 """)
