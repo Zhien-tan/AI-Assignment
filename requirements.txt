@@ -2,3 +2,5 @@ streamlit
 joblib
 gdown
 scikit-learn
+transformers
+torch
