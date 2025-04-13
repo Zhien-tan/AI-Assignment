@@ -1,50 +1,49 @@
 import streamlit as st
-import torch  # PyTorch library
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
 import joblib
-import gdown
 
-# Title for the web app
-st.title("Sentiment Analysis Model")
+# Load the model and tokenizer (modified to load on CPU)
+def load_model():
+    model_file = 'path/to/your/sentiment_model.pth'  # Path to your model file
+    model = torch.load(model_file, map_location=torch.device('cpu'))  # Load model to CPU
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')  # You can modify if you have a custom tokenizer
+    return model, tokenizer
 
-# Add a text area for the user to input a review
-user_review = st.text_area("Enter a review:")
+# Define a function to predict sentiment
+def predict_sentiment(model, tokenizer, text):
+    inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
+    with torch.no_grad():  # No need to track gradients for inference
+        outputs = model(**inputs)
+    logits = outputs.logits
+    predicted_class = torch.argmax(logits, dim=-1).item()  # Get the class with the highest logit
+    return predicted_class
 
-# If the user inputs a review, perform the prediction
-if user_review:
-    # Define the model URL from Google Drive (use the shared Google Drive link)
-    model_url = 'https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B'  # Update with your actual model file ID
-    model_file = 'sentiment_model.pkl'  # Assuming your model is a .pkl file
-
-    # Use gdown to download the model from Google Drive
-    gdown.download(model_url, model_file, quiet=False)
-
-    # Load the pre-trained model using torch.load() with map_location for CPU
-    try:
-        model = torch.load(model_file, map_location=torch.device('cpu'))
-    except Exception as e:
-        st.error(f"Error loading the model: {e}")
-        raise
-
-    # Set the model to evaluation mode
-    model.eval()
-
-    # Preprocess the review input as needed for the model (ensure you tokenize/format the input)
-    # Example: Assuming you're using the tokenizer to prepare the input for the model
-    # inputs = tokenizer(user_review, return_tensors='pt')
-
-    # Perform the sentiment prediction (ensure your model’s forward method is correctly implemented)
-    # Example for prediction:
-    # Assuming model outputs logits and you want to convert them to probabilities
-    model.eval()  # Set the model to evaluation mode
-    with torch.no_grad():  # Disable gradient calculation
-        inputs = torch.tensor([user_review])  # Convert review text to tensor (implement tokenization as needed)
-        outputs = model(inputs)  # Get the raw prediction from the model
-        predicted_class = torch.argmax(outputs, dim=1).item()  # Get the predicted class (0, 1, or 2)
+# Streamlit app layout
+def app():
+    st.title("Sentiment Analysis")
     
-    # Display the result based on the model's output
-    if predicted_class == 0:
-        st.write("Sentiment: Negative")
-    elif predicted_class == 1:
-        st.write("Sentiment: Neutral")
-    else:
-        st.write("Sentiment: Positive")
+    # Text input from the user
+    user_input = st.text_area("Enter a review:")
+    
+    if st.button('Analyze'):
+        if user_input:
+            # Load model and tokenizer
+            model, tokenizer = load_model()
+            
+            # Perform sentiment analysis
+            predicted_class = predict_sentiment(model, tokenizer, user_input)
+            
+            # Map predicted class to sentiment label (modify as needed)
+            if predicted_class == 1:
+                sentiment = "Positive"
+            else:
+                sentiment = "Negative"
+            
+            # Display the result
+            st.write(f"Sentiment: {sentiment}")
+        else:
+            st.write("Please enter a review for analysis.")
+
+if __name__ == "__main__":
+    app()
