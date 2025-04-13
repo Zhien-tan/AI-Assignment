@@ -18,12 +18,15 @@ if user_review:
     # Use gdown to download the model from Google Drive
     gdown.download(model_url, model_file, quiet=False)
 
-    # Load the pre-trained model using joblib
-    model = joblib.load(model_file)
+    # Load the pre-trained model using torch.load() with map_location for CPU
+    try:
+        model = torch.load(model_file, map_location=torch.device('cpu'))
+    except Exception as e:
+        st.error(f"Error loading the model: {e}")
+        raise
 
-    # If the model is a PyTorch model (e.g., torch.nn.Module), load with torch.load
-    if isinstance(model, torch.nn.Module):
-        model.eval()  # Set the model to evaluation mode
+    # Set the model to evaluation mode
+    model.eval()
 
     # Preprocess the review input as needed for the model (ensure you tokenize/format the input)
     # Example: Assuming you're using the tokenizer to prepare the input for the model
