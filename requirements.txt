@@ -1,6 +1,5 @@
-streamlit
-joblib
-gdown
-scikit-learn
-torch
 transformers
+torch
+joblib
+streamlit
+
