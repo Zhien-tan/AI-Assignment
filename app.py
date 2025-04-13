@@ -1,60 +1,91 @@
 import streamlit as st
 import torch
-from transformers import pipeline
 import gdown
 import joblib
 import os
+from transformers import pipeline
 
-# Step 1: Set up Streamlit page configuration
+# Set up Streamlit page configuration
 st.set_page_config(page_title="Sentiment Analysis Model", page_icon=":guardsman:", layout="centered")
 
-# Step 2: Display a title and description
+# Display title and description
 st.title("Sentiment Analysis App")
 st.write("""
-    This is a simple sentiment analysis model to analyze the sentiment of a movie review.
-    You can enter a review below, and it will predict whether the sentiment is positive or negative.
+    This app analyzes the sentiment of movie reviews.
+    Enter a review below to get a positive/negative prediction.
 """)
 
-# Step 3: Provide the user an option to input text
+# User input
 user_input = st.text_area("Enter your movie review here:")
 
-# Step 4: Define the function to download and load the model
+# Function to download and load the model
+@st.cache_resource
 def download_and_load_model():
-    # Define the model URL
-    model_url = "https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B"
-    model_file = "sentiment_model.pkl"
+    # Google Drive file ID (replace with your actual file ID)
+    file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
+    url = f"https://drive.google.com/uc?id={file_id}"
+    output = "sentiment_model.pkl"
     
-    # Check if the model is already downloaded
-    if not os.path.exists(model_file):
-        # Download the model from Google Drive
-        gdown.download(model_url, model_file, quiet=False)
+    # Download if not exists
+    if not os.path.exists(output):
+        gdown.download(url, output, quiet=False)
     
-    # Load the model using joblib (for saved scikit-learn model)
-    model = joblib.load(model_file)
-    return model
+    # Load the model with proper device handling
+    try:
+        # First try loading with default settings
+        model = joblib.load(output)
+        return model
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
+        return None
 
-# Step 5: Define function for sentiment prediction
-def predict_sentiment(model, review_text):
-    # Use transformers pipeline for sentiment analysis
-    sentiment_pipeline = pipeline("sentiment-analysis")
-    result = sentiment_pipeline(review_text)
-    return result
+# Function for prediction
+def predict_sentiment(model, text):
+    try:
+        # Check if the model is a PyTorch model
+        if isinstance(model, torch.nn.Module):
+            # Preprocess text and make prediction
+            inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+            with torch.no_grad():
+                outputs = model(**inputs)
+            logits = outputs.logits
+            probabilities = torch.softmax(logits, dim=1).tolist()[0]
+            
+            # Return prediction
+            if logits[0][0] > logits[0][1]:
+                return {"label": "NEGATIVE", "score": probabilities[0]}
+            else:
+                return {"label": "POSITIVE", "score": probabilities[1]}
+        else:
+            # Fallback to transformers pipeline
+            classifier = pipeline("sentiment-analysis")
+            return classifier(text)[0]
+    except Exception as e:
+        st.error(f"Prediction error: {str(e)}")
+        return None
 
-# Step 6: When the user enters text, run sentiment analysis
+# When user submits text
 if user_input:
-    # Load the model
-    model = download_and_load_model()
-    
-    # Get the sentiment prediction
-    prediction = predict_sentiment(model, user_input)
-    
-    # Display the prediction result
-    st.write(f"Prediction: {prediction[0]['label']} with a confidence score of {prediction[0]['score']:.2f}")
+    with st.spinner("Analyzing sentiment..."):
+        model = download_and_load_model()
+        
+        if model is not None:
+            prediction = predict_sentiment(model, user_input)
+            
+            if prediction:
+                st.write(f"Prediction: {prediction['label']}")
+                st.write(f"Confidence: {prediction['score']:.2f}")
+                
+                # Visual feedback
+                if prediction['label'] == "POSITIVE":
+                    st.success("😊 Positive sentiment detected!")
+                else:
+                    st.error("😞 Negative sentiment detected")
 
-# Step 7: Display additional instructions
-st.write("""
-    **How to Use the App:**
-    - Enter a review in the text box above.
-    - The app will analyze the sentiment of your review and display the result as either Positive or Negative.
-    - The confidence score is also displayed.
+# Instructions
+st.markdown("""
+**How to use:**
+1. Enter a movie review in the text box
+2. Wait for the analysis to complete
+3. View the results
 """)
