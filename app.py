@@ -3,89 +3,89 @@ import torch
 import gdown
 import joblib
 import os
-from transformers import pipeline
+from transformers import pipeline, AutoTokenizer
 
-# Set up Streamlit page configuration
-st.set_page_config(page_title="Sentiment Analysis Model", page_icon=":guardsman:", layout="centered")
-
-# Display title and description
+# Set up Streamlit
+st.set_page_config(page_title="Sentiment Analysis", layout="centered")
 st.title("Sentiment Analysis App")
-st.write("""
-    This app analyzes the sentiment of movie reviews.
-    Enter a review below to get a positive/negative prediction.
-""")
+st.write("Analyze movie review sentiment (Positive/Negative)")
 
 # User input
 user_input = st.text_area("Enter your movie review here:")
 
-# Function to download and load the model
 @st.cache_resource
 def download_and_load_model():
-    # Google Drive file ID (replace with your actual file ID)
+    # Download model from Google Drive
     file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
     url = f"https://drive.google.com/uc?id={file_id}"
     output = "sentiment_model.pkl"
     
-    # Download if not exists
     if not os.path.exists(output):
         gdown.download(url, output, quiet=False)
     
-    # Load the model with proper device handling
     try:
-        # First try loading with default settings
-        model = joblib.load(output)
+        # Load with explicit CPU mapping
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model = torch.load(output, map_location=device)
+        
+        # If model is wrapped in DataParallel, extract the actual model
+        if isinstance(model, torch.nn.DataParallel):
+            model = model.module
+        
+        model.eval()  # Set to evaluation mode
         return model
     except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
+        st.error(f"Model loading failed: {str(e)}")
         return None
 
-# Function for prediction
-def predict_sentiment(model, text):
+@st.cache_resource
+def load_tokenizer():
+    # Load tokenizer that matches your model
+    return AutoTokenizer.from_pretrained("distilbert-base-uncased")
+
+def predict_sentiment(model, tokenizer, text):
     try:
-        # Check if the model is a PyTorch model
-        if isinstance(model, torch.nn.Module):
-            # Preprocess text and make prediction
-            inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
-            with torch.no_grad():
-                outputs = model(**inputs)
-            logits = outputs.logits
-            probabilities = torch.softmax(logits, dim=1).tolist()[0]
-            
-            # Return prediction
-            if logits[0][0] > logits[0][1]:
-                return {"label": "NEGATIVE", "score": probabilities[0]}
-            else:
-                return {"label": "POSITIVE", "score": probabilities[1]}
-        else:
-            # Fallback to transformers pipeline
-            classifier = pipeline("sentiment-analysis")
-            return classifier(text)[0]
+        # Tokenize input
+        inputs = tokenizer(text, 
+                         return_tensors="pt",
+                         truncation=True,
+                         padding=True,
+                         max_length=512)
+        
+        # Move to same device as model
+        inputs = {k:v.to(model.device) for k,v in inputs.items()}
+        
+        # Predict
+        with torch.no_grad():
+            outputs = model(**inputs)
+        
+        # Get probabilities
+        probs = torch.softmax(outputs.logits, dim=1)[0]
+        pred_label = "POSITIVE" if torch.argmax(probs) == 1 else "NEGATIVE"
+        confidence = probs.max().item()
+        
+        return {"label": pred_label, "score": confidence}
     except Exception as e:
-        st.error(f"Prediction error: {str(e)}")
+        st.error(f"Prediction failed: {str(e)}")
         return None
 
-# When user submits text
 if user_input:
     with st.spinner("Analyzing sentiment..."):
         model = download_and_load_model()
+        tokenizer = load_tokenizer()
         
-        if model is not None:
-            prediction = predict_sentiment(model, user_input)
+        if model and tokenizer:
+            prediction = predict_sentiment(model, tokenizer, user_input)
             
             if prediction:
-                st.write(f"Prediction: {prediction['label']}")
-                st.write(f"Confidence: {prediction['score']:.2f}")
+                st.subheader("Result:")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Sentiment", prediction['label'])
+                with col2:
+                    st.metric("Confidence", f"{prediction['score']:.2%}")
                 
-                # Visual feedback
                 if prediction['label'] == "POSITIVE":
-                    st.success("😊 Positive sentiment detected!")
+                    st.success("😊 Positive review detected!")
                 else:
-                    st.error("😞 Negative sentiment detected")
-
-# Instructions
-st.markdown("""
-**How to use:**
-1. Enter a movie review in the text box
-2. Wait for the analysis to complete
-3. View the results
-""")
+                    st.warning("😞 Negative review detected")
