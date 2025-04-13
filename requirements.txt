@@ -3,3 +3,4 @@ joblib
 gdown
 scikit-learn
 torch
+transformers
