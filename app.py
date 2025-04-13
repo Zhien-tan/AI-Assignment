@@ -6,14 +6,14 @@ import os
 # Title of the app
 st.title("Sentiment Analysis Model")
 
-# Define file and URL
+# Define the Google Drive file ID and construct the download URL
 file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
 model_url = f"https://drive.google.com/uc?id={file_id}"
 model_file = "sentiment_model.pkl"
 
 # Download the model if it doesn't exist
 if not os.path.exists(model_file):
-    st.info("Downloading sentiment analysis model...")
+    st.info("Downloading the sentiment analysis model...")
     gdown.download(model_url, model_file, quiet=False)
 
 # Load the model
@@ -21,11 +21,11 @@ try:
     model = joblib.load(model_file)
     st.success("Model loaded successfully!")
 except Exception as e:
-    st.error("Failed to load model.")
+    st.error("Failed to load the model.")
     st.exception(e)
     st.stop()
 
-# Text input
+# Text input for user review
 user_input = st.text_area("Enter a review:")
 
 # Predict sentiment
