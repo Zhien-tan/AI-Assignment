@@ -2,7 +2,8 @@ import streamlit as st
 import torch
 import gdown
 import os
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import pickle
+from transformers import AutoTokenizer
 
 # Set up Streamlit
 st.set_page_config(page_title="Sentiment Analysis", layout="centered")
@@ -15,39 +16,35 @@ def download_and_load_model():
         # Download model from Google Drive
         file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
         url = f"https://drive.google.com/uc?id={file_id}"
-        output = "sentiment_model.pkl"
+        output = "sentiment_model.pkl"  # Changed to .pkl
         
         if not os.path.exists(output):
             with st.spinner("📥 Downloading model (this may take a few minutes)..."):
                 gdown.download(url, output, quiet=False)
 
-        # Initialize device
-        device = torch.device('cpu')
+        # Load the pickle file with CPU-only handling
+        with open(output, 'rb') as f:
+            model = pickle.load(f)
         
-        # Load model with explicit CPU mapping
-        if torch.__version__ >= "2.6.0":
-            model = torch.load(output, 
-                             map_location=device,
-                             weights_only=False)
-        else:
-            model = torch.load(output,
-                             map_location=device)
-        
-        # Handle DataParallel if needed
-        if isinstance(model, torch.nn.DataParallel):
-            model = model.module
+        # Ensure model is on CPU and in eval mode
+        if hasattr(model, 'to'):
+            model.to('cpu')
+        if hasattr(model, 'eval'):
+            model.eval()
             
-        model.eval()
         return model
         
     except Exception as e:
         st.error(f"""
         ❌ Model loading failed: {str(e)}
         
-        Try these solutions:
-        1. Delete the file 'sentiment_model.pth' and refresh
-        2. Ensure you have at least 500MB free space
-        3. Check your internet connection
+        Try these steps:
+        1. Delete the file 'sentiment_model.pkl' and refresh
+        2. Check you have at least 500MB free disk space
+        3. Verify your internet connection
+        4. Ensure the file is a valid pickle file
+        
+        If problems persist, contact support.
         """)
         return None
 
@@ -70,27 +67,43 @@ def predict_sentiment(model, tokenizer, text):
             "no bad": "good",
             "not bad": "good",
             "wasn't bad": "was good",
-            "isn't bad": "is good"
+            "isn't bad": "is good",
+            "no good": "bad",
+            "not good": "bad"
         }
         for phrase, replacement in negation_map.items():
             text = text.replace(phrase, replacement)
         
         # Tokenize input
-        inputs = tokenizer(text,
-                         return_tensors="pt",
-                         truncation=True,
-                         padding=True,
-                         max_length=512)
+        inputs = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=512
+        )
         
         # Move to CPU explicitly
         inputs = {k: v.to('cpu') for k, v in inputs.items()}
         
-        # Predict
+        # Predict (handling different model types)
         with torch.no_grad():
-            outputs = model(**inputs)
+            if hasattr(model, '__call__'):
+                outputs = model(**inputs)
+            elif hasattr(model, 'predict'):
+                outputs = model.predict(inputs)
+            else:
+                raise ValueError("Model doesn't have callable predict method")
         
         # Process results (assuming 3-class output)
-        probs = torch.softmax(outputs.logits, dim=1)[0]
+        if isinstance(outputs, dict):
+            logits = outputs['logits']
+        elif isinstance(outputs, torch.Tensor):
+            logits = outputs
+        else:
+            logits = outputs[0]
+            
+        probs = torch.softmax(logits, dim=1)[0]
         class_names = ["NEGATIVE", "NEUTRAL", "POSITIVE"]
         pred_idx = torch.argmax(probs).item()
         
@@ -111,7 +124,7 @@ def predict_sentiment(model, tokenizer, text):
 user_input = st.text_area("Review Text:", height=150)
 
 if st.button("Analyze Sentiment", type="primary") and user_input:
-    with st.spinner("🔍 Analyzing..."):
+    with st.spinner("🔍 Analyzing review..."):
         model = download_and_load_model()
         tokenizer = load_tokenizer()
         
@@ -120,15 +133,15 @@ if st.button("Analyze Sentiment", type="primary") and user_input:
             
             if result:
                 # Display results
-                st.subheader("Results")
+                st.subheader("Analysis Results")
                 
-                # Color and emoji mapping
-                format_map = {
+                # Formatting based on sentiment
+                sentiment_format = {
                     "POSITIVE": {"emoji": "😊", "color": "green"},
                     "NEUTRAL": {"emoji": "😐", "color": "blue"},
                     "NEGATIVE": {"emoji": "😞", "color": "red"}
                 }
-                fmt = format_map.get(result['label'], {"emoji": "🤔", "color": "gray"})
+                fmt = sentiment_format.get(result['label'], {"emoji": "🤔", "color": "gray"})
                 
                 st.markdown(
                     f"### <span style='color:{fmt['color']}'>{fmt['emoji']} {result['label']}</span> "
@@ -146,14 +159,28 @@ if st.button("Analyze Sentiment", type="primary") and user_input:
                     cols[1].metric("Neutral", f"{result['scores']['neutral']:.1%}")
                     cols[2].metric("Negative", f"{result['scores']['negative']:.1%}")
 
+# Security note about pickle files
+with st.expander("⚠️ Security Information"):
+    st.warning("""
+    This app loads a .pkl file which could potentially execute arbitrary code. 
+    Only use this app with model files from trusted sources.
+    """)
+
 # Troubleshooting section
-with st.expander("⚠️ Troubleshooting"):
+with st.expander("❓ Need Help?"):
     st.markdown("""
-    **If you see errors:**
-    1. **Model loading fails**:
-       - Delete `sentiment_model.pth` and refresh
+    **Common Solutions:**
+    
+    1. **Model won't load**:
+       - Delete `sentiment_model.pkl` and refresh
        - Check disk space (need 500MB+ free)
+       - Ensure stable internet connection
+    
     2. **Wrong predictions**:
        - Try more explicit language
-       - Avoid mixed sentiments in one review
+       - Avoid mixed sentiments
+    
+    3. **'no bad' shows negative**:
+       - The app automatically converts these to positive
+       - If still wrong, your model may need retraining
     """)
