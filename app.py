@@ -3,45 +3,49 @@ import torch
 import gdown
 import os
 import pickle
+import asyncio
 from transformers import AutoTokenizer
+
+# Fix for Streamlit event loop
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
 
 # Set up Streamlit
 st.set_page_config(page_title="Sentiment Analysis", layout="centered")
 st.title("🎬 Movie Review Sentiment Analysis")
-st.write("Enter a movie review to analyze its sentiment (Positive/Negative)")
-
-# User input
-user_input = st.text_area("Review Text:", height=150, placeholder="Type your movie review here...")
+st.write("Enter a movie review to analyze its sentiment")
 
 @st.cache_resource
-def download_model():
+def download_and_load_model():
     try:
-        # Updated Google Drive link for .pkl file
-        url = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
+        # Download model from Google Drive
+        file_id = "19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
+        url = f"https://drive.google.com/uc?id={file_id}"
         output = "sentiment_model.pkl"
         
         if not os.path.exists(output):
-            with st.spinner("📥 Downloading model (this may take a few minutes)..."):
-                gdown.download(url, output, quiet=False)
-        return output
-    except Exception as e:
-        st.error(f"❌ Download failed: {str(e)}")
-        return None
+            with st.spinner("📥 Downloading model (250MB, may take 2-3 minutes)..."):
+                try:
+                    gdown.download(url, output, quiet=False)
+                except Exception as e:
+                    st.error(f"Download failed: {str(e)}")
+                    return None
 
-@st.cache_resource
-def load_sentiment_model():
-    try:
-        model_path = download_model()
-        if not model_path:
-            return None
+        # Verify file integrity
+        if os.path.getsize(output) < 1024:  # Check if file is too small
+            os.remove(output)
+            raise ValueError("Downloaded file is too small - likely corrupted")
 
-        # Load the pickle file with CPU-only handling
-        with open(model_path, 'rb') as f:
-            if torch.__version__ >= "2.6.0":
+        # Load the pickle file safely
+        try:
+            with open(output, 'rb') as f:
                 model = pickle.load(f)
-            else:
-                model = pickle.load(f)
-        
+        except pickle.UnpicklingError:
+            os.remove(output)
+            raise ValueError("File is corrupted - deleting and please try again")
+
         # Ensure model is on CPU
         if hasattr(model, 'to'):
             model.to('cpu')
@@ -54,10 +58,11 @@ def load_sentiment_model():
         st.error(f"""
         ❌ Model loading failed: {str(e)}
         
-        Try these fixes:
-        1. Delete the file 'sentiment_model.pkl' and refresh the app
-        2. Check if you have at least 500MB free disk space
-        3. Restart the application
+        Try these steps:
+        1. Delete 'sentiment_model.pkl' and refresh
+        2. Check internet connection
+        3. Restart the app
+        4. Contact support if issue persists
         """)
         return None
 
@@ -66,15 +71,7 @@ def load_tokenizer():
     try:
         return AutoTokenizer.from_pretrained("distilbert-base-uncased")
     except Exception as e:
-        st.error(f"❌ Tokenizer failed to load: {str(e)}")
-        return None
-        
-@st.cache_resource
-def load_tokenizer():
-    try:
-        return AutoTokenizer.from_pretrained("distilbert-base-uncased")
-    except Exception as e:
-        st.error(f"❌ Tokenizer failed to load: {str(e)}")
+        st.error(f"❌ Tokenizer failed: {str(e)}")
         return None
 
 def predict_sentiment(model, tokenizer, text):
@@ -82,20 +79,11 @@ def predict_sentiment(model, tokenizer, text):
         if not text.strip():
             return None
             
-        # Enhanced negation handling
-        text = text.lower()
-        negation_map = {
-            "no bad": "good",
-            "not bad": "good",
-            "wasn't bad": "was good",
-            "isn't bad": "is good",
-            "no good": "bad",
-            "not good": "bad"
-        }
-        for phrase, replacement in negation_map.items():
-            text = text.replace(phrase, replacement)
+        # Enhanced text preprocessing
+        text = text.lower().strip()
+        text = text.replace("no bad", "good").replace("not bad", "good")
         
-        # Tokenize input
+        # Tokenize
         inputs = tokenizer(
             text,
             return_tensors="pt",
@@ -103,105 +91,70 @@ def predict_sentiment(model, tokenizer, text):
             padding=True,
             max_length=512
         )
-        
-        # Move to CPU explicitly
         inputs = {k: v.to('cpu') for k, v in inputs.items()}
         
-        # Predict (handling different model types)
+        # Predict
         with torch.no_grad():
-            if hasattr(model, '__call__'):
-                outputs = model(**inputs)
-            elif hasattr(model, 'predict'):
-                outputs = model.predict(inputs)
-            else:
-                raise ValueError("Model doesn't have callable predict method")
+            outputs = model(**inputs)
         
-        # Process results (assuming 3-class output)
-        if isinstance(outputs, dict):
-            logits = outputs['logits']
-        elif isinstance(outputs, torch.Tensor):
-            logits = outputs
+        # Get probabilities
+        if hasattr(outputs, 'logits'):
+            probs = torch.softmax(outputs.logits, dim=1)[0]
         else:
-            logits = outputs[0]
+            probs = torch.softmax(outputs[0], dim=1)[0]
             
-        probs = torch.softmax(logits, dim=1)[0]
-        class_names = ["NEGATIVE", "NEUTRAL", "POSITIVE"]
-        pred_idx = torch.argmax(probs).item()
-        
         return {
-            "label": class_names[pred_idx],
-            "score": probs[pred_idx].item(),
-            "scores": {
-                "negative": probs[0].item(),
-                "neutral": probs[1].item(),
-                "positive": probs[2].item()
-            }
+            "positive": probs[1].item(),
+            "negative": probs[0].item()
         }
+        
     except Exception as e:
-        st.error(f"❌ Prediction failed: {str(e)}")
+        st.error(f"❌ Prediction error: {str(e)}")
         return None
 
 # Main app
 user_input = st.text_area("Review Text:", height=150)
 
-if st.button("Analyze Sentiment", type="primary") and user_input:
-    with st.spinner("🔍 Analyzing review..."):
+if st.button("Analyze", type="primary") and user_input:
+    with st.spinner("Analyzing..."):
         model = download_and_load_model()
         tokenizer = load_tokenizer()
         
         if model and tokenizer:
-            result = predict_sentiment(model, tokenizer, user_input)
+            scores = predict_sentiment(model, tokenizer, user_input)
             
-            if result:
+            if scores:
+                # Determine sentiment
+                if scores['positive'] > 0.65:
+                    label, emoji, color = "POSITIVE", "😊", "green"
+                elif scores['negative'] > 0.65:
+                    label, emoji, color = "NEGATIVE", "😞", "red"
+                else:
+                    label, emoji, color = "NEUTRAL", "😐", "blue"
+                
                 # Display results
-                st.subheader("Analysis Results")
+                st.markdown(f"### <span style='color:{color}'>{emoji} {label}</span>", unsafe_allow_html=True)
                 
-                # Formatting based on sentiment
-                sentiment_format = {
-                    "POSITIVE": {"emoji": "😊", "color": "green"},
-                    "NEUTRAL": {"emoji": "😐", "color": "blue"},
-                    "NEGATIVE": {"emoji": "😞", "color": "red"}
-                }
-                fmt = sentiment_format.get(result['label'], {"emoji": "🤔", "color": "gray"})
-                
-                st.markdown(
-                    f"### <span style='color:{fmt['color']}'>{fmt['emoji']} {result['label']}</span> "
-                    f"({result['score']:.0%} confidence)",
-                    unsafe_allow_html=True
-                )
-                
-                # Confidence meter
-                st.progress(result['score'])
-                
-                # Detailed scores
-                with st.expander("📊 Detailed Scores"):
-                    cols = st.columns(3)
-                    cols[0].metric("Positive", f"{result['scores']['positive']:.1%}")
-                    cols[1].metric("Neutral", f"{result['scores']['neutral']:.1%}")
-                    cols[2].metric("Negative", f"{result['scores']['negative']:.1%}")
+                # Show scores
+                with st.expander("Details"):
+                    st.metric("Positive", f"{scores['positive']:.1%}")
+                    st.metric("Negative", f"{scores['negative']:.1%}")
 
-# Security note about pickle files
-with st.expander("⚠️ Security Information"):
-    st.warning("""
-    This app loads a .pkl file which could potentially execute arbitrary code. 
-    Only use this app with model files from trusted sources.
-    """)
-
-# Troubleshooting section
-with st.expander("❓ Need Help?"):
+# Troubleshooting
+with st.expander("Need Help?"):
     st.markdown("""
-    **Common Solutions:**
+    **Solutions for common issues:**
     
     1. **Model won't load**:
-       - Delete `sentiment_model.pkl` and refresh
-       - Check disk space (need 500MB+ free)
-       - Ensure stable internet connection
+       - Delete the .pkl file and refresh
+       - Check your internet connection
+       - Ensure sufficient disk space
     
-    2. **Wrong predictions**:
-       - Try more explicit language
+    2. **Strange predictions**:
+       - Try clearer language
        - Avoid mixed sentiments
     
-    3. **'no bad' shows negative**:
-       - The app automatically converts these to positive
-       - If still wrong, your model may need retraining
+    3. **Other errors**:
+       - Restart the app
+       - Check console for details
     """)
