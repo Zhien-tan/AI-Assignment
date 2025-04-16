@@ -1,64 +1,48 @@
-import streamlit as st
-import torch
-import gdown
-import os
-import pickle
-from transformers import AutoTokenizer
-
-# Set up Streamlit
-st.set_page_config(page_title="Sentiment Analysis", layout="centered")
-st.title("🎬 Movie Review Sentiment Analysis")
-st.write("Enter a movie review to analyze its sentiment (Positive/Negative)")
-
-# User input
-user_input = st.text_area("Review Text:", height=150, placeholder="Type your movie review here...")
-
-@st.cache_resource
-def download_model():
+def predict_sentiment(model, tokenizer, text):
     try:
-        # Updated Google Drive link for .pkl file
-        url = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
-        output = "sentiment_model.pkl"
-        
-        if not os.path.exists(output):
-            with st.spinner("📥 Downloading model (this may take a few minutes)..."):
-                gdown.download(url, output, quiet=False)
-        return output
-    except Exception as e:
-        st.error(f"❌ Download failed: {str(e)}")
-        return None
-
-@st.cache_resource
-def load_sentiment_model():
-    try:
-        model_path = download_model()
-        if not model_path:
+        if not text.strip():
+            st.warning("Please enter some text to analyze")
             return None
-
-        # Load the pickle file with CPU-only handling
-        with open(model_path, 'rb') as f:
-            if torch.__version__ >= "2.6.0":
-                model = pickle.load(f)
-            else:
-                model = pickle.load(f)
-        
-        # Ensure model is on CPU
-        if hasattr(model, 'to'):
-            model.to('cpu')
-        if hasattr(model, 'eval'):
-            model.eval()
             
-        return model
+        # Tokenize input
+        inputs = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=512
+        )
+        inputs = {k: v.to('cpu') for k, v in inputs.items()}
+        
+        # Predict
+        with torch.no_grad():
+            outputs = model(**inputs)
+        
+        # Get logits and process
+        logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
+        probs = torch.softmax(logits, dim=1)[0]
+        
+        # Debug output
+        print(f"Raw probabilities: {probs.tolist()}")  # For debugging
+        
+        # Determine class mapping (critical fix)
+        if probs[0] > probs[1]:  # Index 0 is negative
+            return {
+                "label": "NEGATIVE",
+                "score": probs[0].item(),
+                "pos_score": probs[1].item(),
+                "neg_score": probs[0].item()
+            }
+        else:
+            return {
+                "label": "POSITIVE",
+                "score": probs[1].item(),
+                "pos_score": probs[1].item(),
+                "neg_score": probs[0].item()
+            }
         
     except Exception as e:
-        st.error(f"""
-        ❌ Model loading failed: {str(e)}
-        
-        Try these fixes:
-        1. Delete the file 'sentiment_model.pkl' and refresh the app
-        2. Check if you have at least 500MB free disk space
-        3. Restart the application
-        """)
+        st.error(f"❌ Analysis failed: {str(e)}")
         return None
 
 @st.cache_resource
