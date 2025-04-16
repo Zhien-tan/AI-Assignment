@@ -13,53 +13,39 @@ st.markdown("Classifies reviews as **Positive** 😊, **Neutral** 😐, or **Neg
 def load_custom_model():
     model_file = "sentiment_model.pkl"
     try:
-        # Download model if needed
+        # Download model from Google Drive if it doesn't exist locally
         if not os.path.exists(model_file):
             with st.spinner("Downloading your custom model..."):
                 gdown.download(
-                    "https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B",
+                    "https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B",  # Update with your Google Drive link
                     model_file,
                     quiet=True
                 )
 
-        # Load with map_location=torch.device('cpu') to avoid CUDA issues and weights_only=False to fix the loading issue
+        # Load model to CPU (map_location=torch.device('cpu') to avoid CUDA issues)
         device = torch.device('cpu')
         model = torch.load(model_file, map_location=device, weights_only=False)
         
+        # If the model is wrapped in DataParallel, extract the model
         if isinstance(model, torch.nn.DataParallel):
             model = model.module
             
-        model.eval()
-        tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
+        model.eval()  # Set the model to evaluation mode
+        tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")  # Or any tokenizer that works with your model
         return model, tokenizer, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
     
     except Exception as e:
-        st.warning(f"Custom model loading note: {str(e)}")
+        st.warning(f"Custom model loading failed: {str(e)}")
         return None, None, None
-
-@st.cache_resource
-def load_fallback_model():
-    try:
-        # Offline-compatible model loading
-        model_name = "cardiffnlp/twitter-roberta-base-sentiment-latest"
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        return model, tokenizer, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
-    except Exception as e:
-        st.error(f"Fallback model unavailable: {str(e)}")
-        return None, None, None
-
-# Load models with priority
-model, tokenizer, class_names = load_custom_model()
-if model is None:
-    model, tokenizer, class_names = load_fallback_model()
 
 # Main app interface
+model, tokenizer, class_names = load_custom_model()
+
 if model is None:
     st.error("""
     ❌ No model available. Please:
     1. Check your internet connection
-    2. Verify the model file exists
+    2. Verify the model file exists on Google Drive
     3. Contact support if this persists
     """)
     st.stop()
