@@ -27,12 +27,10 @@ def download_and_load_model():
         # Force CPU loading regardless of where model was saved
         device = torch.device('cpu')
         
-        # Load with proper device mapping and safety settings
-        model = torch.load(output, 
-                         map_location=device,
-                         weights_only=False)
+        # Load model with proper device mapping
+        model = torch.load(output, map_location=device)
         
-        # Handle DataParallel if needed
+        # Handle DataParallel if needed (e.g., if model was trained on multiple GPUs)
         if isinstance(model, torch.nn.DataParallel):
             model = model.module
         
@@ -74,7 +72,7 @@ def predict_sentiment(model, tokenizer, text):
             "neg_score": probs[0].item()
         }
     except Exception as e:
-        st.error(f"Prediction error: {str(e)}")
+        st.error(f"❌ Prediction error: {str(e)}")
         return None
 
 if st.button("Analyze Sentiment", type="primary") and user_input:
