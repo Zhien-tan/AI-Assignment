@@ -27,8 +27,8 @@ def download_and_load_model():
         # Force CPU loading regardless of where model was saved
         device = torch.device('cpu')
         
-        # Load model with map_location explicitly set to CPU
-        model = torch.load(output, map_location=device)
+        # Load model with map_location explicitly set to CPU and weights_only=False
+        model = torch.load(output, map_location=device, weights_only=False)
         
         # Handle DataParallel if needed (e.g., if model was trained on multiple GPUs)
         if isinstance(model, torch.nn.DataParallel):
