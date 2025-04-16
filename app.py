@@ -12,13 +12,13 @@ st.markdown("Classifies reviews as **Positive** 😊, **Neutral** 😐, or **Neg
 @st.cache_resource
 def load_model():
     model_file = "sentiment_model.pth"  # Changed to .pth for clarity
-    
+
     # 1. Download model if needed
     if not os.path.exists(model_file):
         try:
             with st.spinner("Downloading model..."):
                 gdown.download(
-                    "https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B",
+                    "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH",
                     model_file,
                     quiet=True
                 )
