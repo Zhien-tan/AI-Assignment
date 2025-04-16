@@ -2,43 +2,63 @@ import streamlit as st
 import torch
 import gdown
 import os
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import pickle
+from transformers import AutoTokenizer
 
 # Set up Streamlit
 st.set_page_config(page_title="Sentiment Analysis", layout="centered")
 st.title("🎬 Movie Review Sentiment Analysis")
-st.write("Enter a movie review to analyze its sentiment (Positive/Neutral/Negative)")
+st.write("Enter a movie review to analyze its sentiment (Positive/Negative)")
 
 # User input
 user_input = st.text_area("Review Text:", height=150, placeholder="Type your movie review here...")
 
 @st.cache_resource
-def download_and_load_model():
-    # Download model from Google Drive
-    file_id = "19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
-    url = f"https://drive.google.com/uc?id={file_id}"
-    output = "sentiment_model.pth"
-    
-    if not os.path.exists(output):
-        with st.spinner("Downloading model..."):
-            gdown.download(url, output, quiet=False)
-    
+def download_model():
     try:
-        # Force CPU loading
-        device = torch.device('cpu')
+        # Updated Google Drive link for .pkl file
+        url = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
+        output = "sentiment_model.pkl"
         
-        # Load model with safety settings
-        model = torch.load(output, 
-                         map_location=device,
-                         weights_only=False)
-        
-        if isinstance(model, torch.nn.DataParallel):
-            model = model.module
-        
-        model.eval()
-        return model
+        if not os.path.exists(output):
+            with st.spinner("📥 Downloading model (this may take a few minutes)..."):
+                gdown.download(url, output, quiet=False)
+        return output
     except Exception as e:
-        st.error(f"❌ Model loading failed: {str(e)}")
+        st.error(f"❌ Download failed: {str(e)}")
+        return None
+
+@st.cache_resource
+def load_sentiment_model():
+    try:
+        model_path = download_model()
+        if not model_path:
+            return None
+
+        # Load the pickle file with CPU-only handling
+        with open(model_path, 'rb') as f:
+            if torch.__version__ >= "2.6.0":
+                model = pickle.load(f)
+            else:
+                model = pickle.load(f)
+        
+        # Ensure model is on CPU
+        if hasattr(model, 'to'):
+            model.to('cpu')
+        if hasattr(model, 'eval'):
+            model.eval()
+            
+        return model
+        
+    except Exception as e:
+        st.error(f"""
+        ❌ Model loading failed: {str(e)}
+        
+        Try these fixes:
+        1. Delete the file 'sentiment_model.pkl' and refresh the app
+        2. Check if you have at least 500MB free disk space
+        3. Restart the application
+        """)
         return None
 
 @st.cache_resource
