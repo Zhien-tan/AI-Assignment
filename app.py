@@ -6,46 +6,48 @@ import pickle
 import asyncio
 from transformers import AutoTokenizer
 
-# Fix for Streamlit event loop
+# ======================
+# STREAMLIT INITIALIZATION
+# ======================
 try:
-    asyncio.get_running_loop()
-except RuntimeError:
+    # Fix event loop issues
     asyncio.set_event_loop(asyncio.new_event_loop())
+    
+    # Initialize Streamlit
+    st.set_page_config(
+        page_title="Sentiment Analysis",
+        layout="centered",
+        initial_sidebar_state="expanded"
+    )
+except:
+    pass
 
-# Set up Streamlit
-st.set_page_config(page_title="Sentiment Analysis", layout="centered")
-st.title("🎬 Movie Review Sentiment Analysis")
-st.write("Enter a movie review to analyze its sentiment")
-
+# ======================
+# MODEL DOWNLOAD & LOADING
+# ======================
 @st.cache_resource
-def download_and_load_model():
+def get_model():
+    MODEL_URL = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
+    MODEL_PATH = "sentiment_model.pkl"
+    
+    # 1. Download with retries and validation
+    if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 1024:
+        with st.spinner("Downloading model (250MB)..."):
+            try:
+                gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+                if os.path.getsize(MODEL_PATH) < 1024:
+                    raise ValueError("Downloaded file is too small")
+            except Exception as e:
+                st.error(f"Download failed: {str(e)}")
+                if os.path.exists(MODEL_PATH):
+                    os.remove(MODEL_PATH)
+                return None
+    
+    # 2. Safe model loading
     try:
-        # Download model from Google Drive
-        file_id = "19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
-        url = f"https://drive.google.com/uc?id={file_id}"
-        output = "sentiment_model.pkl"
-        
-        if not os.path.exists(output):
-            with st.spinner("📥 Downloading model (250MB, may take 2-3 minutes)..."):
-                try:
-                    gdown.download(url, output, quiet=False)
-                except Exception as e:
-                    st.error(f"Download failed: {str(e)}")
-                    return None
-
-        # Verify file integrity
-        if os.path.getsize(output) < 1024:  # Check if file is too small
-            os.remove(output)
-            raise ValueError("Downloaded file is too small - likely corrupted")
-
-        # Load the pickle file safely
-        try:
-            with open(output, 'rb') as f:
-                model = pickle.load(f)
-        except pickle.UnpicklingError:
-            os.remove(output)
-            raise ValueError("File is corrupted - deleting and please try again")
-
+        with open(MODEL_PATH, 'rb') as f:
+            model = pickle.load(f)
+            
         # Ensure model is on CPU
         if hasattr(model, 'to'):
             model.to('cpu')
@@ -55,33 +57,42 @@ def download_and_load_model():
         return model
         
     except Exception as e:
-        st.error(f"""
-        ❌ Model loading failed: {str(e)}
-        
-        Try these steps:
-        1. Delete 'sentiment_model.pkl' and refresh
-        2. Check internet connection
-        3. Restart the app
-        4. Contact support if issue persists
-        """)
+        st.error(f"Model loading failed: {str(e)}")
+        if os.path.exists(MODEL_PATH):
+            os.remove(MODEL_PATH)
         return None
 
+# ======================
+# TOKENIZER LOADING
+# ======================
 @st.cache_resource
-def load_tokenizer():
+def get_tokenizer():
     try:
         return AutoTokenizer.from_pretrained("distilbert-base-uncased")
     except Exception as e:
-        st.error(f"❌ Tokenizer failed: {str(e)}")
+        st.error(f"Tokenizer failed: {str(e)}")
         return None
 
-def predict_sentiment(model, tokenizer, text):
+# ======================
+# PREDICTION LOGIC
+# ======================
+def analyze_sentiment(model, tokenizer, text):
     try:
         if not text.strip():
             return None
             
-        # Enhanced text preprocessing
+        # Enhanced negation handling
         text = text.lower().strip()
-        text = text.replace("no bad", "good").replace("not bad", "good")
+        negations = {
+            "no bad": "good",
+            "not bad": "good",
+            "wasn't bad": "was good",
+            "isn't bad": "is good",
+            "no good": "bad",
+            "not good": "bad"
+        }
+        for phrase, replacement in negations.items():
+            text = text.replace(phrase, replacement)
         
         # Tokenize
         inputs = tokenizer(
@@ -97,64 +108,93 @@ def predict_sentiment(model, tokenizer, text):
         with torch.no_grad():
             outputs = model(**inputs)
         
-        # Get probabilities
+        # Process output (assuming 3 classes: negative, neutral, positive)
         if hasattr(outputs, 'logits'):
             probs = torch.softmax(outputs.logits, dim=1)[0]
         else:
             probs = torch.softmax(outputs[0], dim=1)[0]
             
         return {
-            "positive": probs[1].item(),
-            "negative": probs[0].item()
+            "negative": probs[0].item(),
+            "neutral": probs[1].item(),
+            "positive": probs[2].item()
         }
         
     except Exception as e:
-        st.error(f"❌ Prediction error: {str(e)}")
+        st.error(f"Analysis failed: {str(e)}")
         return None
 
-# Main app
+# ======================
+# MAIN APP INTERFACE
+# ======================
+st.title("🎬 Movie Review Sentiment Analysis")
+st.write("Enter your movie review below:")
+
 user_input = st.text_area("Review Text:", height=150)
 
-if st.button("Analyze", type="primary") and user_input:
-    with st.spinner("Analyzing..."):
-        model = download_and_load_model()
-        tokenizer = load_tokenizer()
-        
-        if model and tokenizer:
-            scores = predict_sentiment(model, tokenizer, user_input)
+if st.button("Analyze Sentiment", type="primary"):
+    if not user_input.strip():
+        st.warning("Please enter a review first")
+    else:
+        with st.spinner("Processing..."):
+            # Load resources
+            model = get_model()
+            tokenizer = get_tokenizer()
             
-            if scores:
-                # Determine sentiment
-                if scores['positive'] > 0.65:
-                    label, emoji, color = "POSITIVE", "😊", "green"
-                elif scores['negative'] > 0.65:
-                    label, emoji, color = "NEGATIVE", "😞", "red"
-                else:
-                    label, emoji, color = "NEUTRAL", "😐", "blue"
+            if model and tokenizer:
+                results = analyze_sentiment(model, tokenizer, user_input)
                 
-                # Display results
-                st.markdown(f"### <span style='color:{color}'>{emoji} {label}</span>", unsafe_allow_html=True)
-                
-                # Show scores
-                with st.expander("Details"):
-                    st.metric("Positive", f"{scores['positive']:.1%}")
-                    st.metric("Negative", f"{scores['negative']:.1%}")
+                if results:
+                    # Determine sentiment
+                    if results['positive'] > 0.65:
+                        label, emoji, color = "POSITIVE", "😊", "green"
+                    elif results['negative'] > 0.65:
+                        label, emoji, color = "NEGATIVE", "😞", "red"
+                    else:
+                        label, emoji, color = "NEUTRAL", "😐", "blue"
+                    
+                    # Display results
+                    st.markdown(
+                        f"### <span style='color:{color}'>{emoji} {label}</span>",
+                        unsafe_allow_html=True
+                    )
+                    
+                    # Confidence meter
+                    confidence = max(results.values())
+                    st.progress(confidence)
+                    st.caption(f"Confidence: {confidence:.1%}")
+                    
+                    # Detailed scores
+                    with st.expander("Detailed Analysis"):
+                        cols = st.columns(3)
+                        cols[0].metric("Positive", f"{results['positive']:.1%}")
+                        cols[1].metric("Neutral", f"{results['neutral']:.1%}")
+                        cols[2].metric("Negative", f"{results['negative']:.1%}")
 
-# Troubleshooting
-with st.expander("Need Help?"):
+# ======================
+# TROUBLESHOOTING SECTION
+# ======================
+with st.expander("⚠️ Troubleshooting Help"):
     st.markdown("""
-    **Solutions for common issues:**
+    **Common Issues & Solutions:**
     
     1. **Model won't load**:
-       - Delete the .pkl file and refresh
-       - Check your internet connection
-       - Ensure sufficient disk space
+       - Delete `sentiment_model.pkl` and refresh
+       - Check internet connection
+       - Ensure you have 500MB+ free space
     
     2. **Strange predictions**:
-       - Try clearer language
+       - Try more explicit language
        - Avoid mixed sentiments
     
-    3. **Other errors**:
-       - Restart the app
-       - Check console for details
+    3. **App crashes**:
+       - Restart the Streamlit server
+       - Check console for errors
     """)
+
+# Security note
+st.sidebar.warning("""
+⚠️ **Security Notice**  
+This app loads pickle files which could execute arbitrary code.  
+Only use models from trusted sources.
+""")
