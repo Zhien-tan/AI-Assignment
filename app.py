@@ -17,7 +17,7 @@ def load_custom_model():
         if not os.path.exists(model_file):
             with st.spinner("Downloading your custom model..."):
                 gdown.download(
-                    "https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B",  # Update with your Google Drive link
+                    "https://drive.usercontent.google.com/download?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B&authuser=0",  # Update with your Google Drive link
                     model_file,
                     quiet=True
                 )
