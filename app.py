@@ -2,129 +2,111 @@ import streamlit as st
 import torch
 import gdown
 import os
-import pickle
-from transformers import AutoTokenizer, DistilBertForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-# Setup
-st.set_page_config(page_title="3-Way Sentiment Analysis", layout="centered")
-st.title("🎬 Movie Review Sentiment Analyzer")
-st.markdown("Classifies reviews as **Positive** 😊, **Neutral** 😐, or **Negative** 😞")
+# Set up Streamlit
+st.set_page_config(page_title="Sentiment Analysis", layout="centered")
+st.title("🎬 Movie Review Sentiment Analysis")
+st.write("Enter a movie review to analyze its sentiment (Positive/Negative)")
+
+# User input
+user_input = st.text_area("Review Text:", height=150)
 
 @st.cache_resource
-def load_model():
-    # Try multiple loading methods
-    model_files = [
-        ("sentiment_model.pth", self.load_weights),
-        ("sentiment_model.pkl", self.load_pickle),
-        ("https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH", self.download_and_load)
-    ]
+def download_and_load_model():
+    # Download model from Google Drive
+    file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
+    url = f"https://drive.google.com/uc?id={file_id}"
+    output = "sentiment_model.pth"
     
-    for file_info, loader in model_files:
-        model, tokenizer = loader(file_info)
-        if model is not None:
-            return model, tokenizer, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
+    if not os.path.exists(output):
+        with st.spinner("Downloading model..."):
+            gdown.download(url, output, quiet=False)
     
-    return None, None, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
-
-def load_weights(self, file_path):
     try:
-        model = DistilBertForSequenceClassification.from_pretrained(
-            "distilbert-base-uncased",
-            num_labels=3
-        )
-        model.load_state_dict(torch.load(file_path, map_location='cpu'))
-        model.eval()
-        tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
-        return model, tokenizer
-    except:
-        return None, None
-
-def load_pickle(self, file_path):
-    try:
-        with open(file_path, 'rb') as f:
-            model = pickle.load(f)
+        # Force CPU loading regardless of where model was saved
+        device = torch.device('cpu')
         
+        # Load with proper device mapping and safety settings
+        model = torch.load(output, 
+                         map_location=device,
+                         weights_only=False)
+        
+        # Handle DataParallel if needed
         if isinstance(model, torch.nn.DataParallel):
             model = model.module
-            
-        model = model.to('cpu')
+        
         model.eval()
-        tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
-        return model, tokenizer
-    except:
-        return None, None
+        return model
+    except Exception as e:
+        st.error(f"❌ Model loading failed: {str(e)}")
+        return None
 
-def download_and_load(self, url):
+@st.cache_resource
+def load_tokenizer():
+    return AutoTokenizer.from_pretrained("distilbert-base-uncased")
+
+def predict_sentiment(model, tokenizer, text):
     try:
-        model_file = "downloaded_model.pth"
-        gdown.download(url, model_file, quiet=True)
-        return self.load_weights(model_file)
-    except:
-        return None, None
-
-# Load model
-model, tokenizer, class_names = load_model()
-
-if model is None:
-    st.error("""
-    ❌ Could not load any model. Please:
-    
-    1. Re-save your model using:
-    ```python
-    # Recommended method
-    torch.save(model.to('cpu').state_dict(), 'sentiment_model.pth')
-    
-    # Alternative method
-    with open('sentiment_model.pkl', 'wb') as f:
-        pickle.dump(model.to('cpu'), f, protocol=pickle.HIGHEST_PROTOCOL)
-    ```
-    
-    2. Upload to Google Drive
-    3. Update the file ID in this code
-    """)
-    st.stop()
-
-# Main app
-review = st.text_area("Enter your movie review:", height=150)
-
-if st.button("Analyze Sentiment", type="primary") and review:
-    with st.spinner("Analyzing..."):
-        try:
-            inputs = tokenizer(review, return_tensors="pt", truncation=True, max_length=512)
-            with torch.no_grad():
-                outputs = model(**inputs)
+        if not text.strip():
+            return None
             
-            probs = torch.softmax(outputs.logits, dim=1)[0]
-            pred_class = torch.argmax(probs).item()
-            
-            # Display results
-            st.subheader("Results")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                sentiment = class_names[pred_class]
-                emoji = "😊" if sentiment == "POSITIVE" else \
-                       "😐" if sentiment == "NEUTRAL" else "😞"
-                st.metric("Sentiment", f"{sentiment} {emoji}")
-            
-            with col2:
-                confidence = probs[pred_class].item()
-                st.metric("Confidence", f"{confidence:.1%}")
-                st.progress(confidence)
-            
-            # Detailed scores
-            with st.expander("Detailed Scores"):
-                for i, name in enumerate(class_names):
-                    st.metric(name, f"{probs[i].item():.1%}")
-                    
-        except Exception as e:
-            st.error(f"Analysis error: {str(e)}")
+        # Tokenize input
+        inputs = tokenizer(text, 
+                         return_tensors="pt",
+                         truncation=True,
+                         padding=True,
+                         max_length=512)
+        
+        # Predict
+        with torch.no_grad():
+            outputs = model(**inputs)
+        
+        # Process results
+        probs = torch.softmax(outputs.logits, dim=1)[0]
+        pred_label = "POSITIVE" if torch.argmax(probs) == 1 else "NEGATIVE"
+        confidence = probs.max().item()
+        
+        return {
+            "label": pred_label,
+            "score": confidence,
+            "pos_score": probs[1].item(),
+            "neg_score": probs[0].item()
+        }
+    except Exception as e:
+        st.error(f"Prediction error: {str(e)}")
+        return None
 
-# Environment info
-with st.expander("⚙️ System Information"):
-    st.write(f"PyTorch version: {torch.__version__}")
-    st.write(f"CUDA available: {torch.cuda.is_available()}")
-    if os.path.exists("sentiment_model.pth"):
-        st.write(f"Model file size: {os.path.getsize('sentiment_model.pth')/1e6:.2f} MB")
-    if os.path.exists("sentiment_model.pkl"):
-        st.write(f"Pickle file size: {os.path.getsize('sentiment_model.pkl')/1e6:.2f} MB")
+if st.button("Analyze Sentiment", type="primary") and user_input:
+    with st.spinner("🔍 Analyzing review..."):
+        model = download_and_load_model()
+        tokenizer = load_tokenizer()
+        
+        if model and tokenizer:
+            result = predict_sentiment(model, tokenizer, user_input)
+            
+            if result:
+                # Display results
+                st.subheader("Analysis Results")
+                
+                # Sentiment label with emoji
+                emoji = "😊" if result['label'] == "POSITIVE" else "😞"
+                st.markdown(f"### {emoji} {result['label']}")
+                
+                # Confidence meter
+                st.progress(result['score'])
+                st.caption(f"Confidence: {result['score']:.1%}")
+                
+                # Detailed scores
+                with st.expander("Detailed Scores"):
+                    col1, col2 = st.columns(2)
+                    col1.metric("Positive", f"{result['pos_score']:.1%}")
+                    col2.metric("Negative", f"{result['neg_score']:.1%}")
+
+# Add some tips
+st.markdown("""
+**💡 Tips for better results:**
+- Write at least 2-3 sentences
+- Avoid neutral language
+- Include emotional words
+""")
