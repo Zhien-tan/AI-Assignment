@@ -15,7 +15,7 @@ user_input = st.text_area("Review Text:", height=150)
 @st.cache_resource
 def download_and_load_model():
     # Download model from Google Drive
-    file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
+    file_id = "19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
     url = f"https://drive.google.com/uc?id={file_id}"
     output = "sentiment_model.pth"
     
