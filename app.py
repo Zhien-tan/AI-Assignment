@@ -15,7 +15,7 @@ def download_and_load_model():
         # Download model from Google Drive
         file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
         url = f"https://drive.google.com/uc?id={file_id}"
-        output = "sentiment_model.pth"
+        output = "sentiment_model.pkl"
         
         if not os.path.exists(output):
             with st.spinner("📥 Downloading model (this may take a few minutes)..."):
