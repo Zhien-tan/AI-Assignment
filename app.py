@@ -17,7 +17,7 @@ def download_model():
     try:
         file_id = "19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
         url = f"https://drive.google.com/uc?id={file_id}"
-        output = "sentiment_model.pth"
+        output = "sentiment_model.pkl"
         
         if not os.path.exists(output):
             with st.spinner("📥 Downloading model (250MB, may take a few minutes)..."):
