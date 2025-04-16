@@ -2,7 +2,8 @@ import streamlit as st
 import torch
 import gdown
 import os
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import pickle
+from transformers import AutoTokenizer
 
 # Set up Streamlit
 st.set_page_config(page_title="Sentiment Analysis", layout="centered")
@@ -15,12 +16,12 @@ user_input = st.text_area("Review Text:", height=150, placeholder="Type your mov
 @st.cache_resource
 def download_model():
     try:
-        file_id = "19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
-        url = f"https://drive.google.com/uc?id={file_id}"
+        # Updated Google Drive link for .pkl file
+        url = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
         output = "sentiment_model.pkl"
         
         if not os.path.exists(output):
-            with st.spinner("📥 Downloading model (250MB, may take a few minutes)..."):
+            with st.spinner("📥 Downloading model (this may take a few minutes)..."):
                 gdown.download(url, output, quiet=False)
         return output
     except Exception as e:
@@ -34,33 +35,19 @@ def load_sentiment_model():
         if not model_path:
             return None
 
-        # Force CPU loading
-        device = torch.device('cpu')
+        # Load the pickle file with CPU-only handling
+        with open(model_path, 'rb') as f:
+            if torch.__version__ >= "2.6.0":
+                model = pickle.load(f)
+            else:
+                model = pickle.load(f)
         
-        # Load with explicit CPU mapping and safety settings
-        if torch.__version__ >= "2.6.0":
-            state_dict = torch.load(
-                model_path,
-                map_location=device,
-                weights_only=False  # Required for custom models
-            )
-        else:
-            state_dict = torch.load(
-                model_path,
-                map_location=device
-            )
-        
-        # Initialize fresh model architecture
-        model = AutoModelForSequenceClassification.from_pretrained(
-            "distilbert-base-uncased",
-            num_labels=2
-        )
-        
-        # Load state dict with strict=False for better compatibility
-        model.load_state_dict(state_dict, strict=False)
-        model.to(device)
-        model.eval()
-        
+        # Ensure model is on CPU
+        if hasattr(model, 'to'):
+            model.to('cpu')
+        if hasattr(model, 'eval'):
+            model.eval()
+            
         return model
         
     except Exception as e:
@@ -68,7 +55,7 @@ def load_sentiment_model():
         ❌ Model loading failed: {str(e)}
         
         Try these fixes:
-        1. Delete the file 'sentiment_model.pth' and refresh the app
+        1. Delete the file 'sentiment_model.pkl' and refresh the app
         2. Check if you have at least 500MB free disk space
         3. Restart the application
         """)
@@ -88,7 +75,7 @@ def predict_sentiment(model, tokenizer, text):
             st.warning("Please enter some text to analyze")
             return None
             
-        # Tokenize with explicit CPU handling
+        # Tokenize input
         inputs = tokenizer(
             text,
             return_tensors="pt",
@@ -98,12 +85,24 @@ def predict_sentiment(model, tokenizer, text):
         )
         inputs = {k: v.to('cpu') for k, v in inputs.items()}
         
-        # Predict
+        # Predict (handling different model types)
         with torch.no_grad():
-            outputs = model(**inputs)
+            if hasattr(model, '__call__'):
+                outputs = model(**inputs)
+            elif hasattr(model, 'predict'):
+                outputs = model.predict(inputs)
+            else:
+                raise ValueError("Model doesn't have callable predict method")
         
         # Process results
-        probs = torch.softmax(outputs.logits, dim=1)[0]
+        if isinstance(outputs, dict):
+            logits = outputs['logits']
+        elif isinstance(outputs, torch.Tensor):
+            logits = outputs
+        else:
+            logits = outputs[0]
+            
+        probs = torch.softmax(logits, dim=1)[0]
         return {
             "label": "POSITIVE" if torch.argmax(probs) == 1 else "NEGATIVE",
             "score": probs.max().item(),
@@ -147,17 +146,17 @@ with st.expander("⚠️ Troubleshooting"):
     **Common issues and solutions:**
     
     1. **Model fails to load**:
-       - Delete any existing `sentiment_model.pth` file
+       - Delete any existing `sentiment_model.pkl` file
        - Refresh the page to restart download
        - Ensure you have stable internet connection
     
-    2. **Slow performance**:
-       - The app requires ~500MB RAM
-       - First run will be slow as models download
+    2. **Pickle errors**:
+       - The app requires Python 3.8+
+       - Make sure all dependencies are installed
     
     3. **Error messages**:
-       - CUDA errors: This app runs on CPU only
-       - Tokenizer errors: Try refreshing the page
+       - If you see "unsupported pickle", the file may be corrupted
+       - Try re-downloading the model file
     """)
 
-st.caption("Note: This app uses a 250MB machine learning model. Initial loading may take time.")
+st.caption("Note: This app uses machine learning models. Initial loading may take time.")
