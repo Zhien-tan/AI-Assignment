@@ -2,7 +2,7 @@ import streamlit as st
 import torch
 import gdown
 import os
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 # Setup
 st.set_page_config(page_title="3-Way Sentiment Analysis", layout="centered")
@@ -10,108 +10,121 @@ st.title("🎬 Movie Review Sentiment Analyzer")
 st.markdown("Classifies reviews as **Positive** 😊, **Neutral** 😐, or **Negative** 😞")
 
 @st.cache_resource
-def load_resources():
-    custom_model_path = "sentiment_model.pkl"
+def load_custom_model():
+    model_file = "sentiment_model.pkl"
     try:
-        # Download model if not present
-        if not os.path.exists(custom_model_path):
-            with st.spinner("Downloading custom model..."):
+        # Download model if needed
+        if not os.path.exists(model_file):
+            with st.spinner("Downloading your custom model..."):
                 gdown.download(
                     "https://drive.google.com/uc?id=1pKFpU56YyLloC5IONDMxih5QMQSew54B",
-                    custom_model_path,
+                    model_file,
                     quiet=True
                 )
-        
-        # Load model from file
+
+        # Load with weights_only=False for trusted custom models
         device = torch.device('cpu')
-        model = torch.load(custom_model_path, map_location=device, weights_only=False)
+        model = torch.load(
+            model_file,
+            map_location=device,
+            weights_only=False  # Required for PyTorch 2.6+ with custom models
+        )
         
-        # Remove DataParallel if present
         if isinstance(model, torch.nn.DataParallel):
             model = model.module
-        
+            
         model.eval()
         tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
-        
-        st.success("✅ Custom model loaded successfully!")
         return model, tokenizer, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
     
     except Exception as e:
-        st.error(f"❌ Failed to load model: {str(e)}")
+        st.warning(f"Custom model loading note: {str(e)}")
         return None, None, None
 
-# Load model and tokenizer
-model, tokenizer, class_names = load_resources()
+@st.cache_resource
+def load_fallback_model():
+    try:
+        # Offline-compatible model loading
+        model_name = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForSequenceClassification.from_pretrained(model_name)
+        return model, tokenizer, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
+    except Exception as e:
+        st.error(f"Fallback model unavailable: {str(e)}")
+        return None, None, None
 
-# Input box
-review = st.text_area("Enter your movie review:", height=150, 
-                     placeholder="The movie was okay... not great but not terrible either")
+# Load models with priority
+model, tokenizer, class_names = load_custom_model()
+if model is None:
+    model, tokenizer, class_names = load_fallback_model()
+
+# Main app interface
+if model is None:
+    st.error("""
+    ❌ No model available. Please:
+    1. Check your internet connection
+    2. Verify the model file exists
+    3. Contact support if this persists
+    """)
+    st.stop()
+
+review = st.text_area("Enter your movie review:", height=150)
 
 if st.button("Analyze Sentiment", type="primary") and review:
-    if model is None:
-        st.error("System not ready - failed to load model")
-    else:
-        with st.spinner("Analyzing..."):
-            try:
-                # Tokenize and predict
-                inputs = tokenizer(review, return_tensors="pt", truncation=True, max_length=512)
-                with torch.no_grad():
-                    outputs = model(**inputs)
-                
-                probs = torch.softmax(outputs.logits, dim=1)[0]
-                pred_class = torch.argmax(probs).item()
-                confidence = probs[pred_class].item()
-                
-                # Display result
-                st.subheader("Results")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if class_names[pred_class] == "POSITIVE":
-                        st.metric("Sentiment", "POSITIVE", delta="😊", delta_color="normal")
-                    elif class_names[pred_class] == "NEUTRAL":
-                        st.metric("Sentiment", "NEUTRAL", delta="😐", delta_color="off")
-                    else:
-                        st.metric("Sentiment", "NEGATIVE", delta="😞", delta_color="inverse")
-                
-                with col2:
-                    st.metric("Confidence", f"{confidence:.1%}")
-                
-                st.progress(confidence)
-                
-                # Detailed scores
-                with st.expander("Detailed Scores"):
-                    for i, class_name in enumerate(class_names):
-                        st.metric(f"{class_name} Score", f"{probs[i].item():.1%}")
+    with st.spinner("Analyzing..."):
+        try:
+            inputs = tokenizer(review, return_tensors="pt", truncation=True, max_length=512)
+            with torch.no_grad():
+                outputs = model(**inputs)
             
-            except Exception as e:
-                st.error(f"Analysis failed: {str(e)}")
+            probs = torch.softmax(outputs.logits, dim=1)[0]
+            pred_class = torch.argmax(probs).item()
+            confidence = probs[pred_class].item()
+            
+            # Display results
+            st.subheader("Analysis Results")
+            
+            # Sentiment indicator
+            sentiment_emoji = {
+                "POSITIVE": "😊", 
+                "NEUTRAL": "😐", 
+                "NEGATIVE": "😞"
+            }[class_names[pred_class]]
+            
+            col1, col2 = st.columns(2)
+            col1.metric("Sentiment", f"{class_names[pred_class]} {sentiment_emoji}")
+            col2.metric("Confidence", f"{confidence:.1%}")
+            
+            # Confidence visualization
+            st.progress(confidence)
+            
+            # Detailed scores
+            with st.expander("Detailed Scores"):
+                for i, class_name in enumerate(class_names):
+                    st.metric(f"{class_name} Score", f"{probs[i].item():.1%}")
+                    
+        except Exception as e:
+            st.error(f"Analysis error: {str(e)}")
 
-# Info section
-with st.expander("ℹ️ About This App"):
-    st.markdown("""
-    **Model Info:**
-    - 3-way sentiment classification (Positive / Neutral / Negative)
-    - Uses a custom PyTorch model loaded from Google Drive
-
-    **Deployment URL:**  
-    [https://ibtsamfft3vou2mqnd9zz5.streamlit.app/](https://ibtsamfft3vou2mqnd9zz5.streamlit.app/)
-
-    **Install Requirements:**
-    ```bash
-    pip install torch transformers streamlit gdown
-    ```
+# Add model information
+with st.expander("ℹ️ Model Information"):
+    st.markdown(f"""
+    **Current Model:** {'Custom Model' if 'custom' in str(model) else 'Fallback Model'}
+    
+    **Class Labels:** {', '.join(class_names)}
+    
+    **Model Source:** {'Your Google Drive' if 'custom' in str(model) else 'Hugging Face'}
     """)
 
-# Sample inputs
+# Add sample inputs
 with st.expander("💡 Try These Examples"):
     st.markdown("""
     **Positive:**  
-    "This movie blew me away! The acting was phenomenal and the story kept me engaged from start to finish."
+    "The film was absolutely breathtaking! The cinematography and acting were award-worthy."
     
     **Neutral:**  
-    "It was okay. Not as good as the original but had some entertaining moments."
+    "It was an average movie. Some parts were good, others were boring."
     
     **Negative:**  
-    "Terrible film. The plot made no sense and the acting was wooden. Would not recommend."
+    "I hated everything about this film. The plot was nonsensical and the acting was terrible."
     """)
