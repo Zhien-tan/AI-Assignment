@@ -69,37 +69,45 @@ def predict_sentiment(model, tokenizer, text):
             st.warning("Please enter some text to analyze")
             return None
             
+        # Special handling for negation phrases
+        text = text.replace("no bad", "good")  # Simple preprocessing
+        text = text.replace("not bad", "good")
+        
         inputs = tokenizer(
             text,
             return_tensors="pt",
             truncation=True,
             padding=True,
-            max_length=512
+            max_length=512,
+            return_offsets_mapping=True  # Better context handling
         )
-        inputs = {k: v.to('cpu') for k, v in inputs.items()}
+        
+        # Debug print to see processed text
+        print(f"Processed text: {text}")
+        
+        inputs = {k: v.to('cpu') for k, v in inputs.items() if k != 'offset_mapping'}
         
         with torch.no_grad():
             outputs = model(**inputs)
         
-        if hasattr(outputs, 'logits'):
-            logits = outputs.logits
-        else:
-            logits = outputs[0]
-            
+        logits = outputs.logits if hasattr(outputs, 'logits') else outputs[0]
         probs = torch.softmax(logits, dim=1)[0]
         
-        # Explicit class handling
-        if probs[0] > probs[1]:  # Assuming index 0 is negative
+        # Debug probabilities
+        print(f"Debug - Negative: {probs[0].item():.2%}, Positive: {probs[1].item():.2%}")
+        
+        # Adjusted classification with confidence threshold
+        if probs[1] > 0.65:  # Higher threshold for positive
             return {
-                "label": "NEGATIVE",
-                "score": probs[0].item(),
+                "label": "POSITIVE",
+                "score": probs[1].item(),
                 "pos_score": probs[1].item(),
                 "neg_score": probs[0].item()
             }
         else:
             return {
-                "label": "POSITIVE",
-                "score": probs[1].item(),
+                "label": "NEGATIVE",
+                "score": probs[0].item(),
                 "pos_score": probs[1].item(),
                 "neg_score": probs[0].item()
             }
@@ -107,7 +115,6 @@ def predict_sentiment(model, tokenizer, text):
     except Exception as e:
         st.error(f"❌ Analysis failed: {str(e)}")
         return None
-
 # Main execution block
 if st.button("Analyze Sentiment", type="primary"):
     if not user_input:
