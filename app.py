@@ -8,25 +8,41 @@ from transformers import AutoTokenizer
 # Set up Streamlit
 st.set_page_config(page_title="Sentiment Analysis", layout="centered")
 st.title("🎬 Movie Review Sentiment Analysis")
-st.write("Enter a movie review to analyze its sentiment (Positive/Neutral/Negative)")
+st.write("Enter a movie review to analyze its sentiment (Positive/Negative)")
+
+# User input
+user_input = st.text_area("Review Text:", height=150, placeholder="Type your movie review here...")
 
 @st.cache_resource
-def download_and_load_model():
+def download_model():
     try:
-        # Download model from Google Drive
-        file_id = "1pKFpU56YyLloC5IONDMxih5QMQSew54B"
-        url = f"https://drive.google.com/uc?id={file_id}"
-        output = "sentiment_model.pkl"  # Changed to .pkl
+        # Updated Google Drive link for .pkl file
+        url = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
+        output = "sentiment_model.pkl"
         
         if not os.path.exists(output):
             with st.spinner("📥 Downloading model (this may take a few minutes)..."):
                 gdown.download(url, output, quiet=False)
+        return output
+    except Exception as e:
+        st.error(f"❌ Download failed: {str(e)}")
+        return None
+
+@st.cache_resource
+def load_sentiment_model():
+    try:
+        model_path = download_model()
+        if not model_path:
+            return None
 
         # Load the pickle file with CPU-only handling
-        with open(output, 'rb') as f:
-            model = pickle.load(f)
+        with open(model_path, 'rb') as f:
+            if torch.__version__ >= "2.6.0":
+                model = pickle.load(f)
+            else:
+                model = pickle.load(f)
         
-        # Ensure model is on CPU and in eval mode
+        # Ensure model is on CPU
         if hasattr(model, 'to'):
             model.to('cpu')
         if hasattr(model, 'eval'):
@@ -38,16 +54,21 @@ def download_and_load_model():
         st.error(f"""
         ❌ Model loading failed: {str(e)}
         
-        Try these steps:
-        1. Delete the file 'sentiment_model.pkl' and refresh
-        2. Check you have at least 500MB free disk space
-        3. Verify your internet connection
-        4. Ensure the file is a valid pickle file
-        
-        If problems persist, contact support.
+        Try these fixes:
+        1. Delete the file 'sentiment_model.pkl' and refresh the app
+        2. Check if you have at least 500MB free disk space
+        3. Restart the application
         """)
         return None
 
+@st.cache_resource
+def load_tokenizer():
+    try:
+        return AutoTokenizer.from_pretrained("distilbert-base-uncased")
+    except Exception as e:
+        st.error(f"❌ Tokenizer failed to load: {str(e)}")
+        return None
+        
 @st.cache_resource
 def load_tokenizer():
     try:
