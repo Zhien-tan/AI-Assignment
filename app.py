@@ -45,7 +45,6 @@ def predict_sentiment(model, tokenizer, text):
         st.error(f"❌ Analysis failed: {str(e)}")
         return None
 
-@st.cache_resource
 def load_tokenizer():
     try:
         return AutoTokenizer.from_pretrained("distilbert-base-uncased")
