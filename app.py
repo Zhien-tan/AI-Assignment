@@ -27,13 +27,18 @@ def download_and_load_model():
         # Force CPU loading regardless of where model was saved
         device = torch.device('cpu')
         
-        # Load model with proper device mapping
-        model = torch.load(output, map_location=device)
+        # Load with proper device mapping and safety settings
+        state_dict = torch.load(output, map_location=device)
         
-        # Handle DataParallel if needed (e.g., if model was trained on multiple GPUs)
-        if isinstance(model, torch.nn.DataParallel):
-            model = model.module
+        # Initialize model architecture first
+        model = AutoModelForSequenceClassification.from_pretrained(
+            "distilbert-base-uncased",
+            num_labels=2
+        )
         
+        # Load state dict
+        model.load_state_dict(state_dict)
+        model.to(device)
         model.eval()
         return model
     except Exception as e:
@@ -56,6 +61,9 @@ def predict_sentiment(model, tokenizer, text):
                          padding=True,
                          max_length=512)
         
+        # Move inputs to CPU
+        inputs = {k: v.to('cpu') for k, v in inputs.items()}
+        
         # Predict
         with torch.no_grad():
             outputs = model(**inputs)
@@ -72,7 +80,7 @@ def predict_sentiment(model, tokenizer, text):
             "neg_score": probs[0].item()
         }
     except Exception as e:
-        st.error(f"❌ Prediction error: {str(e)}")
+        st.error(f"Prediction error: {str(e)}")
         return None
 
 if st.button("Analyze Sentiment", type="primary") and user_input:
