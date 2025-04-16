@@ -2,7 +2,7 @@ import streamlit as st
 import torch
 import gdown
 import os
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, DistilBertForSequenceClassification
 
 # Setup
 st.set_page_config(page_title="3-Way Sentiment Analysis", layout="centered")
@@ -11,8 +11,8 @@ st.markdown("Classifies reviews as **Positive** 😊, **Neutral** 😐, or **Neg
 
 @st.cache_resource
 def load_model():
-    model_file = "sentiment_model.pth"  # Changed to .pth for clarity
-
+    model_file = "sentiment_model.pkl"
+    
     # 1. Download model if needed
     if not os.path.exists(model_file):
         try:
@@ -24,20 +24,23 @@ def load_model():
                 )
         except Exception as e:
             st.error(f"❌ Download failed: {str(e)}")
-            return None, None, None
+            return None, None, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
 
     # 2. Load model with proper CPU mapping
     try:
-        # Initialize model architecture
-        from transformers import DistilBertForSequenceClassification
-        model = DistilBertForSequenceClassification.from_pretrained(
-            "distilbert-base-uncased",
-            num_labels=3  # For 3-class classification
+        # Force CPU loading with proper settings
+        device = torch.device('cpu')
+        model = torch.load(
+            model_file,
+            map_location=device,
+            weights_only=False,
+            pickle_module=torch.serialization.pickle
         )
         
-        # Load state dict with CPU mapping
-        state_dict = torch.load(model_file, map_location=torch.device('cpu'))
-        model.load_state_dict(state_dict)
+        # Handle DataParallel if used
+        if isinstance(model, torch.nn.DataParallel):
+            model = model.module
+            
         model.eval()
         
         # Load tokenizer
@@ -52,9 +55,9 @@ def load_model():
         Please try:
         1. Re-saving your model with:
            torch.save(model.to('cpu').state_dict(), 'model_weights.pth')
-        2. Using matching PyTorch versions
+        2. Using PyTorch version 2.0.1
         """)
-        return None, None, None
+        return None, None, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
 
 # Load model
 model, tokenizer, class_names = load_model()
@@ -109,21 +112,27 @@ if st.button("Analyze Sentiment", type="primary") and review:
         except Exception as e:
             st.error(f"Analysis error: {str(e)}")
 
-# Instructions for fixing
-with st.expander("🔧 How to Fix Model Loading"):
+# Instructions for model saving
+with st.expander("💻 How to Properly Save Your Model"):
     st.markdown("""
-    1. **Re-save your model** using this code:
     ```python
-    # Save just the weights (recommended)
-    torch.save(model.to('cpu').state_dict(), 'sentiment_model.pth')
+    # BEST PRACTICE (save only weights)
+    torch.save({
+        'state_dict': model.to('cpu').state_dict(),
+        'class_names': ["NEGATIVE", "NEUTRAL", "POSITIVE"]
+    }, 'sentiment_model.pth')
     
-    # Or save the complete model (alternative)
-    torch.save(model.to('cpu'), 'sentiment_model.pth')
+    # Save with custom pickle protocol
+    with open('sentiment_model.pkl', 'wb') as f:
+        torch.save(model.to('cpu'), f, pickle_protocol=4)
     ```
-    
-    2. **Upload the new file** to Google Drive
-    
-    3. **Update the file ID** in this script
-    
-    4. **Verify PyTorch versions** match between saving and loading
+    """)
+
+# Requirements info
+with st.expander("📦 Required Packages"):
+    st.code("""
+    torch==2.0.1
+    transformers==4.30.2
+    gdown==4.7.1
+    streamlit>=1.22.0
     """)
