@@ -108,8 +108,8 @@ def analyze_sentiment(model, tokenizer, text):
 # ======================
 # MAIN APP INTERFACE
 # ======================
-st.title("🎬 Movie Review Sentiment Analysis")
-st.write("Enter your movie review below:")
+st.title("Review Sentiment Analysis")
+st.write("Enter your review below:")
 
 user_input = st.text_area("Review Text:", height=150)
 
