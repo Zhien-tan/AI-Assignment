@@ -76,17 +76,7 @@ def analyze_sentiment(model, tokenizer, text):
         if not text.strip():
             return None
 
-        text = text.lower().strip()
-        negations = {
-            "no bad": "good",
-            "not bad": "good",
-            "wasn't bad": "was good",
-            "isn't bad": "is good",
-            "no good": "bad",
-            "not good": "bad"
-        }
-        for phrase, replacement in negations.items():
-            text = text.replace(phrase, replacement)
+
 
         inputs = tokenizer(
             text,
