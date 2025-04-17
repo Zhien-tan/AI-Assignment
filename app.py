@@ -91,8 +91,8 @@ def analyze_sentiment(model, tokenizer, text):
           #  "no good": "bad",
            # "not good": "bad"
         #}
-        for phrase, replacement in negations.items():
-            text = text.replace(phrase, replacement)
+      #  for phrase, replacement in negations.items():
+         #   text = text.replace(phrase, replacement)
         
         # Tokenize
         inputs = tokenizer(
