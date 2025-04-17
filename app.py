@@ -2,187 +2,199 @@ import streamlit as st
 import torch
 import gdown
 import os
+import pickle
 import asyncio
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import AutoTokenizer
 
-# =============================================
-# FIX 1: Event Loop Initialization
-# =============================================
+# ======================
+# STREAMLIT INITIALIZATION
+# ======================
 try:
-    # Ensure event loop exists (critical for Streamlit)
-    asyncio.get_running_loop()
-except RuntimeError:
+    # Fix event loop issues
     asyncio.set_event_loop(asyncio.new_event_loop())
-
-# =============================================
-# Streamlit Setup
-# =============================================
-st.set_page_config(
-    page_title="Sentiment Analysis",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
-st.title("🎬 Movie Review Sentiment Analyzer")
-
-# =============================================
-# Model Loading with Robust Error Handling
-# =============================================
-@st.cache_resource
-def load_model():
-    MODEL_FILE = "sentiment_model.pth"
-    MODEL_URL = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
     
-    # 1. Download with validation
-    if not os.path.exists(MODEL_FILE) or os.path.getsize(MODEL_FILE) < 1024:
-        try:
-            with st.spinner("Downloading model (250MB)..."):
-                gdown.download(MODEL_URL, MODEL_FILE, quiet=True)
-                if os.path.getsize(MODEL_FILE) < 1024:
-                    raise ValueError("File too small - likely corrupted")
-        except Exception as e:
-            st.error(f"❌ Download failed: {str(e)}")
-            return None, None, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
-
-    # 2. Safe loading
-    try:
-        # Initialize fresh model architecture
-        model = AutoModelForSequenceClassification.from_pretrained(
-            "distilbert-base-uncased",
-            num_labels=3
-        )
-        
-        # Load state dict with explicit CPU mapping
-        device = torch.device('cpu')
-        if torch.__version__ >= "2.6.0":
-            state_dict = torch.load(MODEL_FILE, map_location=device, weights_only=False)
-        else:
-            state_dict = torch.load(MODEL_FILE, map_location=device)
-        
-        model.load_state_dict(state_dict)
-        model.to(device).eval()
-        
-        tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
-        
-        return model, tokenizer, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
-    
-    except Exception as e:
-        st.error(f"""
-        ❌ Model loading error: {str(e)}
-        
-        Likely causes:
-        1. Model file is corrupted - delete '{MODEL_FILE}' and retry
-        2. PyTorch version mismatch
-        3. File saved incorrectly
-        """)
-        return None, None, ["NEGATIVE", "NEUTRAL", "POSITIVE"]
-
-# =============================================
-# Main Application
-# =============================================
-model, tokenizer, CLASS_NAMES = load_model()
-
-if model is None:
-    st.error("""
-    ❌ Critical Error: Model unavailable
-    
-    Solutions:
-    1. Delete any existing model files
-    2. Check internet connection
-    3. Verify the Google Drive file is accessible
-    """)
-    st.stop()
-
-# Example reviews
-EXAMPLE_REVIEWS = {
-    "Positive": "The film was spectacular! Brilliant performances and a captivating plot...",
-    "Neutral": "It was okay - some good moments but nothing memorable...",
-    "Negative": "Terrible movie. Poor acting and a nonsensical story..."
-}
-
-# UI Layout
-tab1, tab2 = st.tabs(["Custom Review", "Examples"])
-
-with tab1:
-    user_review = st.text_area("Your Review:", height=150)
-
-with tab2:
-    selected = st.selectbox("Sample Reviews:", list(EXAMPLE_REVIEWS.keys()))
-    user_review = st.text_area("Example:", 
-                             value=EXAMPLE_REVIEWS[selected], 
-                             height=150)
-    if st.button("Load Example"):
-        st.rerun()
-
-if st.button("Analyze", type="primary") and user_review:
-    with st.spinner("Processing..."):
-        try:
-            # Tokenization
-            inputs = tokenizer(
-                user_review,
-                return_tensors="pt",
-                truncation=True,
-                max_length=512
-            )
-            inputs = {k: v.to('cpu') for k, v in inputs.items()}
-            
-            # Prediction
-            with torch.no_grad():
-                outputs = model(**inputs)
-            
-            # Results processing
-            probs = torch.softmax(outputs.logits, dim=1)[0]
-            pred_idx = torch.argmax(probs).item()
-            confidence = probs[pred_idx].item()
-            
-            # Display
-            st.subheader("Analysis Results")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                sentiment = CLASS_NAMES[pred_idx]
-                emoji = "😊" if sentiment == "POSITIVE" else \
-                       "😐" if sentiment == "NEUTRAL" else "😞"
-                st.metric("Sentiment", f"{sentiment} {emoji}")
-            
-            with col2:
-                st.metric("Confidence", f"{confidence:.1%}")
-                st.progress(confidence)
-            
-            with st.expander("Detailed Scores"):
-                cols = st.columns(3)
-                for i, name in enumerate(CLASS_NAMES):
-                    cols[i].metric(name, f"{probs[i].item():.1%}")
-                    
-        except Exception as e:
-            st.error(f"Analysis failed: {str(e)}")
-
-# =============================================
-# Debugging Information
-# =============================================
-with st.expander("🛠️ Technical Info"):
-    st.markdown(f"""
-    **Environment:**
-    - PyTorch: {torch.__version__}
-    - Transformers: {AutoTokenizer.from_pretrained.__module__}
-    - Streamlit: {st.__version__}
-    
-    **Model Info:**
-    - Classes: {CLASS_NAMES}
-    - Device: {'CPU' if next(model.parameters()).is_cpu else 'GPU'}
-    """)
-
-with st.expander("💾 Proper Model Saving"):
-    st.code("""
-    # Recommended method:
-    torch.save({
-        'state_dict': model.state_dict(),
-        'config': model.config
-    }, 'model.pth')
-    
-    # Loading:
-    model = AutoModelForSequenceClassification.from_pretrained(
-        "distilbert-base-uncased", 
-        config=config
+    # Initialize Streamlit
+    st.set_page_config(
+        page_title="Sentiment Analysis",
+        layout="centered",
+        initial_sidebar_state="expanded"
     )
-    model.load_state_dict(torch.load('model.pth')['state_dict'])
+except:
+    pass
+
+# ======================
+# MODEL DOWNLOAD & LOADING
+# ======================
+@st.cache_resource
+def get_model():
+    MODEL_URL = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
+    MODEL_PATH = "sentiment_model.pkl"
+    
+    # 1. Download with retries and validation
+    if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) < 1024:
+        with st.spinner("Downloading model (250MB)..."):
+            try:
+                gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+                if os.path.getsize(MODEL_PATH) < 1024:
+                    raise ValueError("Downloaded file is too small")
+            except Exception as e:
+                st.error(f"Download failed: {str(e)}")
+                if os.path.exists(MODEL_PATH):
+                    os.remove(MODEL_PATH)
+                return None
+    
+    # 2. Safe model loading
+    try:
+        with open(MODEL_PATH, 'rb') as f:
+            model = pickle.load(f)
+            
+        # Ensure model is on CPU
+        if hasattr(model, 'to'):
+            model.to('cpu')
+        if hasattr(model, 'eval'):
+            model.eval()
+            
+        return model
+        
+    except Exception as e:
+        st.error(f"Model loading failed: {str(e)}")
+        if os.path.exists(MODEL_PATH):
+            os.remove(MODEL_PATH)
+        return None
+
+# ======================
+# TOKENIZER LOADING
+# ======================
+@st.cache_resource
+def get_tokenizer():
+    try:
+        return AutoTokenizer.from_pretrained("distilbert-base-uncased")
+    except Exception as e:
+        st.error(f"Tokenizer failed: {str(e)}")
+        return None
+
+# ======================
+# PREDICTION LOGIC
+# ======================
+def analyze_sentiment(model, tokenizer, text):
+    try:
+        if not text.strip():
+            return None
+            
+        # Enhanced negation handling
+        text = text.lower().strip()
+        negations = {
+            "no bad": "good",
+            "not bad": "good",
+            "wasn't bad": "was good",
+            "isn't bad": "is good",
+            "no good": "bad",
+            "not good": "bad"
+        }
+        for phrase, replacement in negations.items():
+            text = text.replace(phrase, replacement)
+        
+        # Tokenize
+        inputs = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=512
+        )
+        inputs = {k: v.to('cpu') for k, v in inputs.items()}
+        
+        # Predict
+        with torch.no_grad():
+            outputs = model(**inputs)
+        
+        # Process output (assuming 3 classes: negative, neutral, positive)
+        if hasattr(outputs, 'logits'):
+            probs = torch.softmax(outputs.logits, dim=1)[0]
+        else:
+            probs = torch.softmax(outputs[0], dim=1)[0]
+            
+        return {
+            "negative": probs[0].item(),
+            "neutral": probs[1].item(),
+            "positive": probs[2].item()
+        }
+        
+    except Exception as e:
+        st.error(f"Analysis failed: {str(e)}")
+        return None
+
+# ======================
+# MAIN APP INTERFACE
+# ======================
+st.title("🎬 Movie Review Sentiment Analysis")
+st.write("Enter your movie review below:")
+
+user_input = st.text_area("Review Text:", height=150)
+
+if st.button("Analyze Sentiment", type="primary"):
+    if not user_input.strip():
+        st.warning("Please enter a review first")
+    else:
+        with st.spinner("Processing..."):
+            # Load resources
+            model = get_model()
+            tokenizer = get_tokenizer()
+            
+            if model and tokenizer:
+                results = analyze_sentiment(model, tokenizer, user_input)
+                
+                if results:
+                    # Determine sentiment
+                    if results['positive'] > 0.65:
+                        label, emoji, color = "POSITIVE", "😊", "green"
+                    elif results['negative'] > 0.65:
+                        label, emoji, color = "NEGATIVE", "😞", "red"
+                    else:
+                        label, emoji, color = "NEUTRAL", "😐", "blue"
+                    
+                    # Display results
+                    st.markdown(
+                        f"### <span style='color:{color}'>{emoji} {label}</span>",
+                        unsafe_allow_html=True
+                    )
+                    
+                    # Confidence meter
+                    confidence = max(results.values())
+                    st.progress(confidence)
+                    st.caption(f"Confidence: {confidence:.1%}")
+                    
+                    # Detailed scores
+                    with st.expander("Detailed Analysis"):
+                        cols = st.columns(3)
+                        cols[0].metric("Positive", f"{results['positive']:.1%}")
+                        cols[1].metric("Neutral", f"{results['neutral']:.1%}")
+                        cols[2].metric("Negative", f"{results['negative']:.1%}")
+
+# ======================
+# TROUBLESHOOTING SECTION
+# ======================
+with st.expander("⚠️ Troubleshooting Help"):
+    st.markdown("""
+    **Common Issues & Solutions:**
+    
+    1. **Model won't load**:
+       - Delete `sentiment_model.pkl` and refresh
+       - Check internet connection
+       - Ensure you have 500MB+ free space
+    
+    2. **Strange predictions**:
+       - Try more explicit language
+       - Avoid mixed sentiments
+    
+    3. **App crashes**:
+       - Restart the Streamlit server
+       - Check console for errors
     """)
+
+# Security note
+st.sidebar.warning("""
+⚠️ **Security Notice**  
+This app loads pickle files which could execute arbitrary code.  
+Only use models from trusted sources.
+""")
