@@ -27,7 +27,7 @@ except:
 # ======================
 @st.cache_resource
 def get_model():
-    MODEL_URL = "https://drive.google.com/uc?id=19j0ACP1HblX7rYUMOmTAdqPAgofkgIdH"
+    MODEL_URL = "https://drive.google.com/file/d/1scUWq5IMhPogN6bN9u9voVmm8VoO01L4"
     MODEL_PATH = "sentiment_model.pkl"
     
     # 1. Download with retries and validation
