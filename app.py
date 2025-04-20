@@ -1,10 +1,14 @@
+import sys
+import types
+sys.modules['torch.classes'] = types.ModuleType('torch.classes')
+
 import streamlit as st
 import torch
 import gdown
 import os
 import pickle
-import asyncio
-#from transformers import AutoTokenizer
+from transformers import AutoTokenizer
+
 
 # ======================
 # STREAMLIT INITIALIZATION (With better error handling)
